@@ -9,4 +9,7 @@ if (!app.includes('Service unavailable')) throw new Error('Missing offline/error
 if (!app.includes('/v1/auth/')) throw new Error('Missing backend authentication integration');
 if (!app.includes('tayar_access_token') || !app.includes('tayar_refresh_token')) throw new Error('Missing secure session lifecycle');
 if (!pkg.dependencies['expo-secure-store']) throw new Error('Secure token storage dependency missing');
-console.log('Mobile source smoke tests passed: dashboard, API status, auth flow, and secure session lifecycle');
+if (!app.includes('/v1/questions?exam_id=rrb_ntpc')) throw new Error('Missing verified question list integration');
+if (!app.includes('/answer')) throw new Error('Missing server-side answer submission integration');
+if (!app.includes('solution_steps')) throw new Error('Missing solution display');
+console.log('Mobile source smoke tests passed: auth, secure session, API status, verified practice and solution rendering');
