@@ -8,6 +8,20 @@ BEGIN
      OR has_table_privilege('anon', 'public.attempts', 'INSERT') THEN
     RAISE EXCEPTION 'Client roles must not be able to insert practice attempts directly';
   END IF;
+  IF NOT has_table_privilege('service_role', 'public.attempts', 'INSERT') THEN
+    RAISE EXCEPTION 'Backend service role must be able to save graded attempts';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.rls_auto_enable()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.rls_auto_enable()', 'EXECUTE')
+     OR has_function_privilege('public', 'public.rls_auto_enable()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'API roles and PUBLIC must not execute the RLS event-trigger function';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'ensure_rls') THEN
+    RAISE EXCEPTION 'RLS auto-enable event trigger is missing';
+  END IF;
+
 
   SELECT count(*) INTO question_count
   FROM public.questions
