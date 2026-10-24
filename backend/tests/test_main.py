@@ -34,6 +34,23 @@ def test_metrics_endpoint_is_prometheus_compatible():
     assert "tayar_http_requests_total" in r.text
     assert "tayar_http_request_duration_seconds" in r.text
 
+def test_verified_hint_cache_stores_and_returns_results():
+    main._hint_cache.clear()
+    result = {"provider": "groq", "hint": "Use the verified first step."}
+    main._store_cached_hint("unit-test-hint", result)
+    assert main._get_cached_hint("unit-test-hint") == result
+    main._hint_cache.clear()
+
+
+def test_hint_rate_limit_blocks_excess_inference():
+    main._hint_requests.clear()
+    user_id = "unit-test-rate-limit"
+    for _ in range(main.HINT_RATE_LIMIT):
+        assert main._consume_hint_request(user_id) is None
+    retry_after = main._consume_hint_request(user_id)
+    assert retry_after is not None and retry_after >= 1
+    main._hint_requests.pop(user_id, None)
+
 
 def test_attempt_preview():
     r = client.post("/v1/attempts/preview", json={
