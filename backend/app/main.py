@@ -63,7 +63,25 @@ HINT_RATE_LIMIT = 10
 HINT_RATE_WINDOW_SECONDS = 60
 _hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
 _hint_requests: dict[str, deque[float]] = defaultdict(deque)
-_hint_locks: dict[str, asyncio.Lock] = {}
+HINT_LOCK_MAX_ENTRIES = 512
+_hint_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+
+
+def _get_hint_lock(key: str) -> asyncio.Lock:
+    lock = _hint_locks.get(key)
+    if lock is not None:
+        _hint_locks.move_to_end(key)
+        return lock
+    lock = asyncio.Lock()
+    _hint_locks[key] = lock
+    while len(_hint_locks) > HINT_LOCK_MAX_ENTRIES:
+        for old_key, old_lock in list(_hint_locks.items()):
+            if old_key != key and not old_lock.locked():
+                _hint_locks.pop(old_key, None)
+                break
+        else:
+            break
+    return lock
 
 
 def _get_cached_hint(key: str) -> dict[str, str | None] | None:
@@ -347,7 +365,7 @@ async def get_hint(payload: HintIn, request: Request):
     ).hexdigest()
     cache_key = f"v1:{payload.question_id}:{payload.hint_level}:{cache_digest}"
     # Per-key async locks prevent concurrent requests from paying for the same inference twice.
-    lock = _hint_locks.setdefault(cache_key, asyncio.Lock())
+    lock = _get_hint_lock(cache_key)
     async with lock:
         cached = _get_cached_hint(cache_key)
         if cached is not None:
@@ -650,7 +668,7 @@ async def answer_verified_question(
                 f"{base_url}/rest/v1/attempts",
                 params={"on_conflict": "user_id,idempotency_key"},
                 headers={
-                    **user_headers,
+                    **admin_headers,
                     "Content-Type": "application/json",
                     "Prefer": "resolution=ignore-duplicates,return=representation",
                 },
