@@ -7,17 +7,17 @@ BEGIN
   FROM public.questions
   WHERE exam_id = 'rrb_ntpc' AND active = true AND source_verified = true;
 
-  IF question_count <> 38 THEN
-    RAISE EXCEPTION 'Expected 38 active source-verified questions, found %', question_count;
+  IF question_count <> 50 THEN
+    RAISE EXCEPTION 'Expected 50 active source-verified questions, found %', question_count;
   END IF;
 
   SELECT count(*) INTO topic_count
   FROM public.topics
   WHERE exam_id = 'rrb_ntpc'
-    AND slug IN ('number-system', 'lcm-hcf', 'percentage', 'time-and-work', 'pipe-and-cistern');
+    AND slug IN ('number-system', 'lcm-hcf', 'percentage', 'time-and-work', 'pipe-and-cistern', 'average', 'ratio-proportion', 'profit-loss', 'discount', 'simple-compound-interest', 'distance-time-speed', 'mensuration');
 
-  IF topic_count <> 5 THEN
-    RAISE EXCEPTION 'Expected five syllabus topics, found %', topic_count;
+  IF topic_count <> 12 THEN
+    RAISE EXCEPTION 'Expected twelve syllabus topics, found %', topic_count;
   END IF;
 
   IF EXISTS (
