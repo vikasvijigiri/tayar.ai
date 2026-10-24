@@ -44,3 +44,9 @@ if (!app.includes('authRequest("otp"') || !app.includes('type: "sms"')) throw ne
 if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PASSWORD")) throw new Error("Email/password login must not be shown");
 if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
+
+if (!app.includes("const authenticatedFetch") || !app.includes("response.status !== 401") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh expired sessions and retry once");
+if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight to avoid refresh-token rotation races");
+if (!app.includes("authConfigCache.current") || !app.includes("expiresAt: Date.now() + 5 * 60 * 1000")) throw new Error("Supabase public config should be cached briefly");
+if (!app.includes("hintCache.current.size > 256")) throw new Error("Client hint cache must be bounded");
+console.log("Session refresh, single-flight and bounded-cache checks passed");
