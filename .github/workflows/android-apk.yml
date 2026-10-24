@@ -3,7 +3,13 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-apk.yml"
   pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 permissions:
   contents: write
