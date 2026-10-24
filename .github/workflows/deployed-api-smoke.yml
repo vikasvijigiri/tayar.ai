@@ -1,0 +1,68 @@
+name: Deployed API Smoke Tests
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deployed-api-smoke-main
+  cancel-in-progress: true
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for Render health endpoint
+        env:
+          API_BASE_URL: https://tayar-ai-api.onrender.com
+        run: |
+          for attempt in $(seq 1 12); do
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' "$API_BASE_URL/health" || true)
+            if [ "$code" = "200" ] && grep -q '"status":"ok"' /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            echo "Health check attempt $attempt returned HTTP $code; retrying..."
+            sleep 15
+          done
+          echo "Live API health check did not pass."
+          exit 1
+
+      - name: Verify config and Prometheus metrics
+        env:
+          API_BASE_URL: https://tayar-ai-api.onrender.com
+        run: |
+          curl --fail --silent --show-error "$API_BASE_URL/v1/config" | tee /tmp/config.json
+          grep -q '"rrb_ntpc"' /tmp/config.json
+          curl --fail --silent --show-error "$API_BASE_URL/metrics" | tee /tmp/metrics.txt
+          grep -q 'tayar_http_requests_total' /tmp/metrics.txt
+          grep -q 'tayar_http_request_duration_seconds' /tmp/metrics.txt
+
+      - name: Verify protected endpoints reject anonymous requests
+        env:
+          API_BASE_URL: https://tayar-ai-api.onrender.com
+        run: |
+          check_status() {
+            path="$1"
+            expected="$2"
+            code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' "$API_BASE_URL$path")
+            echo "$path returned HTTP $code (expected $expected)"
+            test "$code" = "$expected"
+          }
+          check_status "/v1/attempts/summary" "401"
+          check_status "/v1/ai/hint" "422"
+          check_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" "401"
+
+      - name: Verify Supabase-backed readiness and verified question delivery
+        env:
+          API_BASE_URL: https://tayar-ai-api.onrender.com
+        run: |
+          curl --fail --silent --show-error "$API_BASE_URL/health/ready" | tee /tmp/readiness.json
+          grep -q '"status":"ready"' /tmp/readiness.json
+          curl --fail --silent --show-error "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0" | tee /tmp/questions.json
+          grep -q '"questions"' /tmp/questions.json
+          if grep -q '"answer_key"' /tmp/questions.json; then
+            echo "Security failure: question-list response exposed answer_key."
+            exit 1
+          fi
