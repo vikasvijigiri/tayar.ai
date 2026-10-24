@@ -1,8 +1,12 @@
 const fs = require('fs');
 const app = fs.readFileSync('App.tsx', 'utf8');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 if (!app.includes('lastFiveAccuracy')) throw new Error('Missing recent accuracy metric');
 if (!app.includes('SOURCE-VERIFIED')) throw new Error('Missing source integrity guard');
 if (!app.includes('https://tayar-ai-api.onrender.com')) throw new Error('Missing configured API base URL');
 if (!app.includes('/health')) throw new Error('Missing backend health check integration');
 if (!app.includes('Service unavailable')) throw new Error('Missing offline/error state');
-console.log('Mobile source smoke tests passed: dashboard metrics, source integrity, API URL and connectivity states');
+if (!app.includes('/v1/auth/')) throw new Error('Missing backend authentication integration');
+if (!app.includes('tayar_access_token') || !app.includes('tayar_refresh_token')) throw new Error('Missing secure session lifecycle');
+if (!pkg.dependencies['expo-secure-store']) throw new Error('Secure token storage dependency missing');
+console.log('Mobile source smoke tests passed: dashboard, API status, auth flow, and secure session lifecycle');
