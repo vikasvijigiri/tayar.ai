@@ -204,3 +204,32 @@ def test_question_list_allowlists_public_fields(monkeypatch):
     assert question["question_text"] == "Verified question?"
     assert "answer_key" not in question
     assert "internal_note" not in question
+
+
+def test_attempt_summary_calculates_accuracy_speed_and_weak_topics():
+    rows = [
+        {"question_id": "q1", "is_correct": False, "elapsed_ms": 10000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q1", "is_correct": True, "elapsed_ms": 8000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q2", "is_correct": False, "elapsed_ms": 12000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q3", "is_correct": True, "elapsed_ms": 5000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q4", "is_correct": True, "elapsed_ms": 7000, "questions": {"topic_id": "percent", "topics": {"name": "Percentages", "slug": "percentages"}}},
+    ]
+    summary = main.summarize_attempt_rows(rows)
+    assert summary["total_attempts"] == 5
+    assert summary["overall_accuracy_pct"] == 60.0
+    assert summary["last_5_accuracy_pct"] == 60.0
+    assert summary["average_time_seconds"] == 8.4
+    assert summary["repeat_accuracy_pct"] == 100.0
+    assert summary["weakest_topic"]["topic"] == "Algebra"
+    assert summary["weakest_topic"]["accuracy_pct"] == 50.0
+    assert summary["topic_performance"][0]["slug"] == "algebra"
+
+
+def test_attempt_summary_handles_no_attempts():
+    summary = main.summarize_attempt_rows([])
+    assert summary["total_attempts"] == 0
+    assert summary["overall_accuracy_pct"] is None
+    assert summary["last_5_accuracy_pct"] is None
+    assert summary["average_time_seconds"] is None
+    assert summary["repeat_accuracy_pct"] is None
+    assert summary["weakest_topic"] is None
