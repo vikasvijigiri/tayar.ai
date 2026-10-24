@@ -163,6 +163,19 @@ def test_question_answer_rejects_invalid_elapsed_time():
     assert r.status_code == 422
 
 
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/questions?exam_id=rrb_ntpc%2C%28id.not.is.null%29",
+        "/v1/attempts/history?exam_id=rrb_ntpc%2C%28id.not.is.null%29",
+        "/v1/attempts/summary?exam_id=rrb_ntpc%2C%28id.not.is.null%29",
+    ],
+)
+def test_exam_id_rejects_postgrest_filter_injection(path):
+    response = client.get(path)
+    assert response.status_code == 422
+
 def test_attempt_summary_requires_bearer_token():
     r = client.get("/v1/attempts/summary")
     assert r.status_code == 401
