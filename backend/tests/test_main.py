@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import app.main as main
 from app.main import app
 
 client = TestClient(app)
@@ -155,3 +156,51 @@ def test_readiness_fails_when_supabase_is_not_configured(monkeypatch):
     r = client.get("/health/ready")
     assert r.status_code == 503
     assert r.json()["detail"]["status"] == "not_ready"
+
+
+def test_question_list_allowlists_public_fields(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+        is_success = True
+
+        def json(self):
+            return [{
+                "id": "00000000-0000-0000-0000-000000000001",
+                "exam_id": "rrb_ntpc",
+                "question_text": "Verified question?",
+                "options": ["A", "B", "C", "D"],
+                "source_document": "test.pdf",
+                "source_page": "1",
+                "answer_key": "C",
+                "internal_note": "must never be exposed",
+            }]
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            assert params["source_verified"] == "eq.true"
+            assert params["active"] == "eq.true"
+            assert "answer_key" not in params["select"]
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    r = client.get("/v1/questions?limit=1")
+    assert r.status_code == 200
+    question = r.json()["questions"][0]
+    assert question["question_text"] == "Verified question?"
+    assert "answer_key" not in question
+    assert "internal_note" not in question
