@@ -35,6 +35,17 @@ REQUEST_LATENCY = Histogram(
     ["method", "route"],
     buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
+AI_PROVIDER_REQUESTS = Counter(
+    "tayar_ai_provider_requests_total",
+    "AI provider completion attempts by provider and outcome",
+    ["provider", "outcome"],
+)
+AI_PROVIDER_LATENCY = Histogram(
+    "tayar_ai_provider_request_duration_seconds",
+    "AI provider completion latency in seconds",
+    ["provider"],
+    buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30),
+)
 
 
 @app.middleware("http")
@@ -178,13 +189,22 @@ async def provider_completion(provider: str, system_prompt: str, user_prompt: st
         "temperature": 0.2,
         "max_tokens": 500,
     }
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(
-            url, json=body, headers={"Authorization": f"Bearer {key}"}
-        )
-        response.raise_for_status()
-        data = response.json()
-    return data["choices"][0]["message"]["content"]
+    started = perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                url, json=body, headers={"Authorization": f"Bearer {key}"}
+            )
+            response.raise_for_status()
+            data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        AI_PROVIDER_REQUESTS.labels(provider, "success").inc()
+        return content
+    except Exception:
+        AI_PROVIDER_REQUESTS.labels(provider, "error").inc()
+        raise
+    finally:
+        AI_PROVIDER_LATENCY.labels(provider).observe(perf_counter() - started)
 
 
 @app.post("/v1/ai/hint")
