@@ -26,7 +26,8 @@ type AuthMode = "signin" | "signup";
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
 type Question = { id: string; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
 type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
-type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; recent_attempts: number };
+type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
+type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
 
 export default function App() {
   const [tab, setTab] = useState("Today");
@@ -344,7 +345,7 @@ export default function App() {
         <View style={s.grid}>
           <Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/>
           <Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/>
-          <Metric label="WEAKNESS RADAR" value="Not enough data" color={C.amber}/>
+          <Metric label="WEAKEST TOPIC" value={summary?.weakest_topic?.topic || "Not enough data"} color={C.amber}/>
           <Metric label="ATTEMPTS LOGGED" value={summary ? String(summary.total_attempts) : "—"} color={C.teal}/>
           <Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds == null ? "—" : String(summary.average_time_seconds) + "s"} color={C.blue}/>
         </View>
@@ -383,7 +384,22 @@ export default function App() {
           {questionError!==""&&questions.length===0&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
         </View>
         <View style={s.nav}>{["Today","Topics","Progress"].map(x=><TouchableOpacity key={x} onPress={()=>setTab(x)} style={[s.navItem,tab===x&&s.active]}><Text style={{color:tab===x?C.teal:C.muted,fontWeight:"700"}}>{x}</Text></TouchableOpacity>)}</View>
-        {tab!=="Today"&&<View style={s.card}><Text style={s.cardTitle}>{tab==="Topics"?"Topic mastery":"Progress history"}</Text><Text style={s.body}>This view will populate from verified question attempts. No performance is fabricated.</Text></View>}
+        {tab==="Topics"&&<View style={s.card}>
+          <Text style={s.cardTitle}>Topic mastery</Text>
+          {summary?.topic_performance?.length ? summary.topic_performance.slice(0,8).map(topic=><View key={topic.slug} style={s.topicRow}>
+            <View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View>
+            <View style={s.topicTrack}><View style={[s.topicFill,{width:String(Math.max(0,Math.min(100,topic.accuracy_pct)))+"%"}]}/></View>
+            <Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average</Text>
+          </View>) : <Text style={s.body}>Topic mastery appears after verified questions have been answered and saved.</Text>}
+          {summary?.weakest_topic&&<Text style={[s.body,{marginTop:12}]}>Focus next: {summary.weakest_topic.topic} ({summary.weakest_topic.accuracy_pct}% across {summary.weakest_topic.attempts} attempts).</Text>}
+        </View>}
+        {tab==="Progress"&&<View style={s.card}>
+          <Text style={s.cardTitle}>Progress history</Text>
+          <View style={s.progressRow}><Text style={s.body}>Total attempts</Text><Text style={s.progressValue}>{summary?String(summary.total_attempts):"—"}</Text></View>
+          <View style={s.progressRow}><Text style={s.body}>Average response time</Text><Text style={s.progressValue}>{summary?.average_time_seconds==null?"—":String(summary.average_time_seconds)+"s"}</Text></View>
+          <View style={s.progressRow}><Text style={s.body}>Repeat-question accuracy</Text><Text style={s.progressValue}>{summary?.repeat_accuracy_pct==null?"—":String(summary.repeat_accuracy_pct)+"%"}</Text></View>
+          <Text style={s.small}>Repeat accuracy is a simple signal from questions attempted more than once, not a formal memory-retention score.</Text>
+        </View>}
         <Text style={s.footer}>Built for consistency, not empty streaks · v0.1.0</Text>
       </ScrollView>
     </SafeAreaView>
@@ -405,6 +421,7 @@ const s=StyleSheet.create({
   body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
   input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
+  topicRow:{marginTop:13},topicHeader:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},topicName:{color:C.text,fontSize:12,fontWeight:"700"},topicAccuracy:{color:C.teal,fontSize:12,fontWeight:"800"},topicTrack:{height:5,borderRadius:8,backgroundColor:"#263650",marginTop:8,marginBottom:6,overflow:"hidden"},topicFill:{height:5,backgroundColor:C.teal,borderRadius:8},progressRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},progressValue:{color:C.text,fontSize:13,fontWeight:"800"},
   hintButton:{alignSelf:"flex-start",paddingVertical:9,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border,marginTop:4,marginBottom:6},hintButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},hintPanel:{padding:12,borderRadius:12,backgroundColor:C.panel2,marginTop:8,marginBottom:8,gap:6},
   option:{padding:13,borderRadius:12,borderWidth:1,borderColor:C.border,marginTop:9,backgroundColor:C.bg},optionSelected:{borderColor:C.teal,backgroundColor:"#173C3D"},optionText:{color:C.muted,fontSize:13,lineHeight:19},optionTextSelected:{color:C.text,fontWeight:"700"},feedback:{borderWidth:1,borderRadius:12,padding:13,marginTop:14,gap:6},feedbackTitle:{fontSize:13,fontWeight:"800",marginBottom:4},
   authMessage:{fontSize:12,lineHeight:18,marginTop:12},primaryButton:{backgroundColor:C.teal,borderRadius:13,paddingVertical:14,alignItems:"center",justifyContent:"center",marginTop:18,minHeight:48},primaryButtonText:{color:C.bg,fontWeight:"900",fontSize:14},dimmed:{opacity:.65},
