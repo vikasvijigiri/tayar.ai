@@ -145,16 +145,26 @@ async def provider_completion(provider: str, system_prompt: str, user_prompt: st
 
 
 @app.post("/v1/ai/hint")
-async def get_hint(payload: HintIn):
+async def get_hint(payload: HintIn, request: Request):
     """Generate a hint only from the verified solution stored server-side."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not base_url or not service_key:
+    if not base_url or not anon_key or not service_key:
         raise HTTPException(status_code=503, detail="Verified solution service is not configured.")
 
     headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    user_headers = {"apikey": anon_key, "Authorization": f"Bearer {token}"}
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
+            user_response = await client.get(f"{base_url}/auth/v1/user", headers=user_headers)
+            if user_response.status_code in (401, 403):
+                raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+            user_response.raise_for_status()
             question_response = await client.get(
                 f"{base_url}/rest/v1/questions",
                 params={
