@@ -4,7 +4,8 @@ The mobile app intentionally supports **SMS OTP and Google OAuth only**. Email/p
 
 ## Supabase Auth configuration
 
-- Enable Phone authentication and configure a real SMS provider with delivery, spending limits, and rate limits.
+- Enable Phone authentication and configure a real SMS provider with delivery, spending limits, per-phone/IP rate limits, and abuse alerts.
+- Enable Supabase CAPTCHA protection for phone OTP before public launch; the client-side resend cooldown is only a UX guard and is not an abuse-control boundary.
 - Enable the Google provider and configure the Google OAuth client ID/secret in Supabase Auth. Keep provider secrets in Supabase; never ship them in the app or backend public config.
 - Add this exact callback to Supabase Auth > URL Configuration > Additional Redirect URLs:
   - `tayarai://auth/callback`
