@@ -11,6 +11,7 @@ if (!app.includes('lastFiveAccuracy')) throw new Error('Missing recent accuracy 
 if (!app.includes('SOURCE-VERIFIED')) throw new Error('Missing source integrity guard');
 if (!app.includes('https://tayar-ai-api.onrender.com')) throw new Error('Missing configured API base URL');
 if (!app.includes('/health')) throw new Error('Missing backend health check integration');
+if (!app.includes('AbortController') || !app.includes('DEFAULT_REQUEST_TIMEOUT_MS')) throw new Error('Mobile API calls must have bounded timeouts');
 if (!app.includes('Service unavailable')) throw new Error('Missing offline/error state');
 if (!app.includes('/v1/auth/')) throw new Error('Missing backend authentication integration');
 if (!app.includes('tayar_access_token') || !app.includes('tayar_refresh_token')) throw new Error('Missing secure session lifecycle');
