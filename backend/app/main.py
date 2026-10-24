@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, deque
 from hashlib import sha256
 from time import monotonic, perf_counter
 from typing import Literal
