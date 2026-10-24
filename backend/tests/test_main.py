@@ -245,7 +245,8 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
     class FakeResponse:
         def __init__(self, status_code=200, body=None):
             self.status_code = status_code
-            self._body = body or {}
+            self._body = body if body is not None else {}
+            self.content = b"[]" if isinstance(self._body, list) else b"{}"
 
         def json(self):
             return self._body
@@ -284,14 +285,18 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
                 "source_verified": True,
             }])
 
-        async def post(self, url, headers=None, json=None):
-            calls["post"].append({"url": url, "headers": headers, "json": json})
-            return FakeResponse(status_code=201)
+        async def post(self, url, params=None, headers=None, json=None):
+            calls["post"].append({"url": url, "params": params, "headers": headers, "json": json})
+            return FakeResponse(status_code=201, body=[{
+                "idempotency_key": json["idempotency_key"],
+                "is_correct": json["is_correct"],
+                "answer_given": json["answer_given"],
+            }])
 
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     response = client.post(
         "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
-        headers={"Authorization": "Bearer user-token"},
+        headers={"Authorization": "Bearer user-token", "Idempotency-Key": "00000000-0000-4000-8000-000000000001"},
         json={"answer_given": "B", "elapsed_ms": 4200, "confidence": 4},
     )
     assert response.status_code == 200
@@ -341,7 +346,7 @@ def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     response = client.post(
         "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
-        headers={"Authorization": "Bearer user-token"},
+        headers={"Authorization": "Bearer user-token", "Idempotency-Key": "00000000-0000-4000-8000-000000000001"},
         json={"answer_given": "A", "elapsed_ms": 1000},
     )
     assert response.status_code == 404
