@@ -33,6 +33,7 @@ alter table public.topics enable row level security;
 alter table public.questions enable row level security;
 alter table public.attempts enable row level security;
 create policy "Users can read own attempts" on public.attempts for select to authenticated using(auth.uid()=user_id);
-create policy "Users can insert own attempts" on public.attempts for insert to authenticated with check(auth.uid()=user_id);
+drop policy if exists "Users can insert own attempts" on public.attempts;
+revoke insert on table public.attempts from anon, authenticated;
 -- No public question-table policy: answer keys must not be exposed by direct client reads.
 -- Never place the Supabase service-role key in the mobile app.
