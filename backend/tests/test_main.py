@@ -18,6 +18,13 @@ def test_config():
     assert r.json()["supported_exams"][0]["id"] == "rrb_ntpc"
     assert {"overall_accuracy", "last_5_accuracy", "weakness", "retention", "time_efficiency"} <= set(r.json()["adaptive_metrics"])
 
+def test_config_cache_policy_and_request_id():
+    request_id = "00000000-0000-4000-8000-000000000001"
+    r = client.get("/v1/config", headers={"X-Request-ID": request_id})
+    assert r.status_code == 200
+    assert r.headers["X-Request-ID"] == request_id
+    assert r.headers["Cache-Control"].startswith("public, max-age=300")
+
 
 def test_metrics_endpoint_is_prometheus_compatible():
     client.get("/health")
@@ -118,6 +125,15 @@ def test_question_answer_requires_bearer_token():
         "elapsed_ms": 12000
     })
     assert r.status_code == 401
+
+def test_answer_requires_idempotency_key_after_authentication():
+    r = client.post(
+        "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
+        headers={"Authorization": "Bearer fake"},
+        json={"answer_given": "A", "elapsed_ms": 1000},
+    )
+    assert r.status_code == 400
+    assert "Idempotency-Key" in r.json()["detail"]
 
 
 def test_question_answer_rejects_invalid_elapsed_time():
