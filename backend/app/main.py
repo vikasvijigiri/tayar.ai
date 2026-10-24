@@ -665,6 +665,75 @@ def summarize_attempt_rows(rows: list[dict]) -> dict:
     }
 
 
+@app.get("/v1/attempts/history")
+async def attempts_history(
+    request: Request,
+    exam_id: str = "rrb_ntpc",
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """Return a paginated, user-scoped answer history without exposing answer keys."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
+
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not anon_key or not service_key:
+        raise HTTPException(status_code=503, detail="Attempt history is not configured.")
+
+    user_headers = {"apikey": anon_key, "Authorization": f"Bearer {token}"}
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            user_response = await client.get(f"{base_url}/auth/v1/user", headers=user_headers)
+            if user_response.status_code in (401, 403):
+                raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+            user_response.raise_for_status()
+            user_id = user_response.json().get("id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Supabase did not return a user.")
+            response = await client.get(
+                f"{base_url}/rest/v1/attempts",
+                params={
+                    "select": "question_id,answer_given,is_correct,elapsed_ms,created_at,questions!inner(exam_id,topic_id,question_text,source_document,source_page,topics(name,slug))",
+                    "user_id": f"eq.{user_id}",
+                    "questions.exam_id": f"eq.{exam_id}",
+                    "order": "created_at.desc",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                },
+                headers=admin_headers,
+            )
+            response.raise_for_status()
+            rows = response.json()
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="Attempt history database request failed.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Attempt history database is temporarily unreachable.")
+
+    history = []
+    for row in rows:
+        question = row.get("questions") or {}
+        topic = question.get("topics") or {}
+        history.append({
+            "question_id": row.get("question_id"),
+            "question_text": question.get("question_text"),
+            "topic": topic.get("name") or topic.get("slug") or "Unclassified",
+            "is_correct": row.get("is_correct") is True,
+            "answer_given": row.get("answer_given"),
+            "elapsed_ms": row.get("elapsed_ms"),
+            "created_at": row.get("created_at"),
+            "source_document": question.get("source_document"),
+            "source_page": question.get("source_page"),
+        })
+    return {"exam_id": exam_id, "attempts": history, "limit": limit, "offset": offset}
+
+
 @app.get("/v1/attempts/summary")
 async def attempts_summary(request: Request, exam_id: str = "rrb_ntpc"):
     """Compute user-only accuracy, speed and topic signals after verifying the Supabase session."""
