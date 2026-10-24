@@ -178,3 +178,60 @@ async def get_hint(payload: HintIn):
             detail={"message": "AI providers unavailable", "providers": errors},
         )
     raise HTTPException(status_code=503, detail="No AI provider configured.")
+
+
+class AttemptSaveIn(BaseModel):
+    question_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+    is_correct: bool
+    elapsed_ms: int = Field(ge=0, le=3600000)
+    confidence: int | None = Field(default=None, ge=1, le=5)
+    answer_given: str | None = Field(default=None, max_length=200)
+
+
+@app.post("/v1/attempts", status_code=201)
+async def save_attempt(payload: AttemptSaveIn, request: Request):
+    """Persist an attempt using the signed-in user's Supabase JWT and RLS."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
+
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not base_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Supabase is not configured.")
+
+    headers = {"apikey": anon_key, "Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            user_response = await client.get(f"{base_url}/auth/v1/user", headers=headers)
+            if user_response.status_code in (401, 403):
+                raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+            user_response.raise_for_status()
+            user = user_response.json()
+            user_id = user.get("id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Supabase did not return a user.")
+            row = {
+                "user_id": user_id,
+                "question_id": payload.question_id,
+                "is_correct": payload.is_correct,
+                "elapsed_ms": payload.elapsed_ms,
+                "confidence": payload.confidence,
+                "answer_given": payload.answer_given,
+            }
+            response = await client.post(
+                f"{base_url}/rest/v1/attempts",
+                headers={**headers, "Content-Type": "application/json", "Prefer": "return=minimal"},
+                json=row,
+            )
+            if response.status_code in (401, 403):
+                raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
+            response.raise_for_status()
+        except HTTPException:
+            raise
+        except httpx.HTTPStatusError:
+            raise HTTPException(status_code=502, detail="Supabase request failed.")
+        except httpx.HTTPError:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unreachable.")
+    return {"saved": True, "question_id": payload.question_id}
