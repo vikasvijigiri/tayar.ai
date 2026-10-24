@@ -146,3 +146,12 @@ def test_hint_requires_bearer_token():
         "hint_level": "nudge"
     })
     assert r.status_code == 401
+
+
+def test_readiness_fails_when_supabase_is_not_configured(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    r = client.get("/health/ready")
+    assert r.status_code == 503
+    assert r.json()["detail"]["status"] == "not_ready"
