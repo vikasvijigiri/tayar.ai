@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -167,3 +168,33 @@ def test_hint_rate_limit_returns_429_after_ten_uncached_requests(fake_supabase, 
     assert all(response.status_code == 200 for response in responses[:10])
     assert responses[10].status_code == 429
     assert "Retry-After" in responses[10].headers
+
+def test_hint_rate_limit_tracker_is_bounded(fake_supabase, monkeypatch):
+    monkeypatch.setattr(main, "HINT_RATE_LIMIT_MAX_USERS", 2)
+    main._hint_requests.clear()
+    assert main._consume_hint_request("user-a") is None
+    assert main._consume_hint_request("user-b") is None
+    assert main._consume_hint_request("user-a") is None
+    assert list(main._hint_requests.keys()) == ["user-b", "user-a"]
+    assert main._consume_hint_request("user-c") is None
+    assert len(main._hint_requests) == 2
+    assert list(main._hint_requests.keys()) == ["user-a", "user-c"]
+
+
+def test_hint_lock_registry_is_bounded_and_never_evicts_locked_locks(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr(main, "HINT_LOCK_MAX_ENTRIES", 2)
+        main._hint_locks.clear()
+        first = main._get_hint_lock("first")
+        second = main._get_hint_lock("second")
+        assert first is not None and second is not None
+        await first.acquire()
+        await second.acquire()
+        assert main._get_hint_lock("third") is None
+        first.release()
+        third = main._get_hint_lock("third")
+        assert third is not None
+        assert len(main._hint_locks) == 2
+        second.release()
+
+    asyncio.run(scenario())
