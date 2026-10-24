@@ -68,7 +68,7 @@ export default function App() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const otpLastSentAt = useRef(0);
+  const otpLastSentAt = useRef<{ phone: string; at: number } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -200,10 +200,11 @@ export default function App() {
     setAuthMessage(""); setAuthError(false);
     const normalizedPhone = phone.trim().replace(/[\s().-]/g, "");
     if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) { setAuthError(true); setAuthMessage("Enter phone with country code, e.g. +91…"); return; }
-    const waitMs = 30000 - (Date.now() - otpLastSentAt.current);
+    const lastSent = otpLastSentAt.current;
+    const waitMs = lastSent?.phone === normalizedPhone ? 30000 - (Date.now() - lastSent.at) : 0;
     if (waitMs > 0) { setAuthError(true); setAuthMessage("Wait " + Math.ceil(waitMs / 1000) + "s before requesting another code."); return; }
     setAuthLoading(true);
-    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = Date.now(); setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
+    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = { phone: normalizedPhone, at: Date.now() }; setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
     catch (error) { setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Could not send code."); }
     finally { setAuthLoading(false); }
   };
