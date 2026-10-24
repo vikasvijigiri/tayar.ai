@@ -16,9 +16,9 @@
     "expo-asset": "~12.0.13",
     "expo-build-properties": "~1.0.10",
     "expo-secure-store": "~15.0.8",
-    "expo-linking": "~8.0.8",
-    "expo-web-browser": "~15.0.10",
-    "expo-crypto": "~15.0.8"
+    "expo-linking": "~8.0.12",
+    "expo-web-browser": "~15.0.11",
+    "expo-crypto": "~15.0.9"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
