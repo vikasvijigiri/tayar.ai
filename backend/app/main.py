@@ -17,7 +17,7 @@ from starlette.responses import Response
 
 app = FastAPI(
     title="Tayar.ai Adaptive API",
-    version="0.1.0",
+    version="0.2.0",
     description="Exam-agnostic adaptive learning API; RRB NTPC is the first exam.",
 )
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
