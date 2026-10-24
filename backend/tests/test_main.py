@@ -65,20 +65,9 @@ def test_hint_requires_verified_server_solution(monkeypatch):
     assert "Verified solution service is not configured" in r.json()["detail"]
 
 
-def test_persisted_attempt_requires_bearer_token():
-    r = client.post("/v1/attempts", json={
-        "question_id": "00000000-0000-0000-0000-000000000001",
-        "is_correct": True,
-        "elapsed_ms": 1000
-    })
-    assert r.status_code == 401
-    assert "Bearer" in r.json()["detail"]
-
-
-def test_persisted_attempt_rejects_malformed_question_id():
-    r = client.post("/v1/attempts", headers={"Authorization": "Bearer fake"}, json={
-        "question_id": "not-a-uuid",
-        "is_correct": True,
+def test_question_answer_rejects_malformed_question_id():
+    r = client.post("/v1/questions/not-a-uuid/answer", headers={"Authorization": "Bearer fake"}, json={
+        "answer_given": "A",
         "elapsed_ms": 1000
     })
     assert r.status_code == 422
