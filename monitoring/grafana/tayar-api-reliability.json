@@ -248,6 +248,62 @@
       ],
       "title": "API Readiness (Dependencies)",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "sum by (provider, outcome) (rate(tayar_ai_provider_requests_total[5m]))",
+          "legendFormat": "{{provider}} · {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "AI Provider Requests and Failures",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(tayar_ai_provider_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{provider}}",
+          "refId": "A"
+        }
+      ],
+      "title": "AI Provider Latency (p95)",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
