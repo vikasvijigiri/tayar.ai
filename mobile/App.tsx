@@ -60,6 +60,8 @@ export default function App() {
   const [serviceCheckLoading, setServiceCheckLoading] = useState(false);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [token, setToken] = useState<string | null>(null);
+  const refreshInFlight = useRef<Promise<{ accessToken: string | null; permanent: boolean }> | null>(null);
+  const authConfigCache = useRef<{ url: string; anonKey: string; expiresAt: number } | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -156,11 +158,15 @@ export default function App() {
   }, []);
 
   const authConfig = async (): Promise<{ url: string; anonKey: string }> => {
+    const cached = authConfigCache.current;
+    if (cached && cached.expiresAt > Date.now()) return { url: cached.url, anonKey: cached.anonKey };
     const response = await apiFetch(API_BASE_URL + "/v1/config", {}, 10000);
     if (!response.ok) throw new Error("Sign-in unavailable.");
     const data = await response.json();
     if (typeof data.supabase_url !== "string" || typeof data.supabase_anon_key !== "string" || !data.supabase_url.startsWith("https://") || !data.supabase_anon_key) throw new Error("Sign-in is not configured.");
-    return { url: data.supabase_url.replace(/\/$/, ""), anonKey: data.supabase_anon_key };
+    const config = { url: data.supabase_url.replace(/\/$/, ""), anonKey: data.supabase_anon_key };
+    authConfigCache.current = { ...config, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return config;
   };
 
   const authRequest = async (path: string, body: Record<string, unknown>) => {
@@ -253,6 +259,60 @@ export default function App() {
     setAuthError(false);
   };
 
+  const refreshSession = async (): Promise<{ accessToken: string | null; permanent: boolean }> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const pending = (async () => {
+      const refreshToken = await SecureStore.getItemAsync("tayar_refresh_token");
+      if (!refreshToken) return { accessToken: null, permanent: true };
+      try {
+        const response = await apiFetch(API_BASE_URL + "/v1/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        }, 15000);
+        if (!response.ok) {
+          return { accessToken: null, permanent: response.status === 400 || response.status === 401 };
+        }
+        const data = await response.json();
+        if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") {
+          return { accessToken: null, permanent: true };
+        }
+        await storeSession(data);
+        return { accessToken: data.access_token, permanent: false };
+      } catch {
+        return { accessToken: null, permanent: false };
+      }
+    })();
+    refreshInFlight.current = pending;
+    try {
+      return await pending;
+    } finally {
+      if (refreshInFlight.current === pending) refreshInFlight.current = null;
+    }
+  };
+
+  const authenticatedFetch = async (
+    url: string,
+    init: Parameters<typeof fetch>[1] = {},
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> => {
+    const currentToken = token || await SecureStore.getItemAsync("tayar_access_token");
+    if (!currentToken) return apiFetch(url, init, timeoutMs);
+    const withToken = (accessToken: string) => {
+      const headers = new Headers(init.headers);
+      headers.set("Authorization", "Bearer " + accessToken);
+      return { ...init, headers };
+    };
+    const response = await apiFetch(url, withToken(currentToken), timeoutMs);
+    if (response.status !== 401) return response;
+    const refreshed = await refreshSession();
+    if (!refreshed.accessToken) {
+      if (refreshed.permanent) await signOut();
+      return response;
+    }
+    return apiFetch(url, withToken(refreshed.accessToken), timeoutMs);
+  };
+
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -260,7 +320,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -287,7 +347,7 @@ export default function App() {
     let active = true;
     const loadSummary = async () => {
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
@@ -307,7 +367,7 @@ export default function App() {
     const loadHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt history is not available.");
@@ -402,7 +462,7 @@ export default function App() {
         idempotencyKey = createIdempotencyKey();
         answerRequestKeys.current.set(question.id, idempotencyKey);
       }
-      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -417,8 +477,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          throw new Error("Your session expired or could not be refreshed. Please try again.");
         }
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
@@ -427,10 +486,10 @@ export default function App() {
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
         const [summaryResponse, historyResponse] = await Promise.all([
-          apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
             headers: { Authorization: "Bearer " + token },
           }),
-          apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
@@ -455,13 +514,15 @@ export default function App() {
     const cacheKey = question.id + ":nudge";
     const cachedHint = hintCache.current.get(cacheKey);
     if (cachedHint) {
+      hintCache.current.delete(cacheKey);
+      hintCache.current.set(cacheKey, cachedHint);
       setHint(cachedHint);
       return;
     }
     setHintLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/ai/hint", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
@@ -470,6 +531,11 @@ export default function App() {
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
       const resolvedHint = data.hint || "A verified hint is not available for this question yet.";
       hintCache.current.set(cacheKey, resolvedHint);
+      while (hintCache.current.size > 256) {
+        const oldestKey = hintCache.current.keys().next().value;
+        if (oldestKey === undefined) break;
+        hintCache.current.delete(oldestKey);
+      }
       setHint(resolvedHint);
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
@@ -487,7 +553,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
@@ -512,7 +578,7 @@ export default function App() {
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
