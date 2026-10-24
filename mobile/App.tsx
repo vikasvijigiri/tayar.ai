@@ -442,7 +442,7 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, {}, 12000);
+      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
       const ok = response.ok;
       const notReady = path === "/health/ready" && response.status === 503;
       setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
@@ -574,6 +574,9 @@ export default function App() {
             {key:"ready",label:"Readiness",path:"/health/ready",description:"Is the database dependency configured?"},
             {key:"config",label:"App configuration",path:"/v1/config",description:"Which exam and metrics are supported?"},
             {key:"metrics",label:"Prometheus metrics",path:"/metrics",description:"Request counts and response-time metrics."},
+            {key:"questions",label:"Verified question bank",path:"/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0",description:"Can the signed-in user retrieve published verified questions?"},
+            {key:"summary",label:"Analytics summary",path:"/v1/attempts/summary?exam_id=rrb_ntpc",description:"Can the API retrieve this user's exam-specific analytics?"},
+            {key:"history",label:"Attempt history",path:"/v1/attempts/history?exam_id=rrb_ntpc&limit=5&offset=0",description:"Can the API retrieve recent saved answers for this user?"},
           ].map(item=>{const result=serviceChecks[item.key];return <View key={item.key} style={s.card}><View style={s.serviceHeading}><Text style={s.cardTitle}>{item.label}</Text><Text style={[s.serviceBadge,{color:result?.status==="online"?C.teal:result?.status==="attention"?C.red:C.muted}]}>{result?.status==="online"?"ONLINE":result?.status==="attention"?"CHECK":result?.status==="checking"?"TESTING":"NOT TESTED"}</Text></View><Text style={s.body}>{item.description}</Text><Text style={s.endpoint}>{item.path}</Text>{result&&<Text style={s.small}>{result.detail}</Text>}<TouchableOpacity onPress={() => checkService(item.key,item.path)} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Test endpoint ↻</Text></TouchableOpacity></View>})}
           <View style={s.crossLinks}><TouchableOpacity onPress={() => setScreen("Practice")} style={s.crossLink}><Text style={s.crossLinkText}>Back to practice →</Text></TouchableOpacity><TouchableOpacity onPress={() => setScreen("Analytics")} style={s.crossLink}><Text style={s.crossLinkText}>Open analytics →</Text></TouchableOpacity></View>
         </>}
