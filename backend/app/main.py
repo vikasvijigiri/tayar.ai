@@ -1,6 +1,10 @@
+import asyncio
+import json
 import logging
 import os
-from time import perf_counter
+from collections import OrderedDict, defaultdict, deque
+from hashlib import sha256
+from time import monotonic, perf_counter
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -50,6 +54,51 @@ AI_PROVIDER_LATENCY = Histogram(
 
 
 logger = logging.getLogger("tayar.api")
+
+# Single-instance in-memory guardrails for the current low-cost Render deployment.
+# Move these to a shared Redis/KV store before running multiple API instances.
+HINT_CACHE_TTL_SECONDS = 3600
+HINT_CACHE_MAX_ENTRIES = 512
+HINT_RATE_LIMIT = 10
+HINT_RATE_WINDOW_SECONDS = 60
+_hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
+_hint_requests: dict[str, deque[float]] = defaultdict(deque)
+_hint_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_cached_hint(key: str) -> dict[str, str | None] | None:
+    now = monotonic()
+    for cached_key, (created_at, _) in list(_hint_cache.items()):
+        if now - created_at >= HINT_CACHE_TTL_SECONDS:
+            _hint_cache.pop(cached_key, None)
+    entry = _hint_cache.get(key)
+    if entry is None:
+        return None
+    _hint_cache.move_to_end(key)
+    return entry[1]
+
+
+def _store_cached_hint(key: str, result: dict[str, str | None]) -> None:
+    _hint_cache[key] = (monotonic(), result)
+    _hint_cache.move_to_end(key)
+    while len(_hint_cache) > HINT_CACHE_MAX_ENTRIES:
+        _hint_cache.popitem(last=False)
+
+
+def _consume_hint_request(user_id: str) -> int | None:
+    now = monotonic()
+    requests = _hint_requests[user_id]
+    while requests and now - requests[0] >= HINT_RATE_WINDOW_SECONDS:
+        requests.popleft()
+    if len(requests) >= HINT_RATE_LIMIT:
+        return max(1, int(HINT_RATE_WINDOW_SECONDS - (now - requests[0]) + 0.999))
+    requests.append(now)
+    # Bound memory if a large number of accounts visit this single process.
+    if len(_hint_requests) > 5000:
+        for key, timestamps in list(_hint_requests.items()):
+            if not timestamps or now - timestamps[-1] >= HINT_RATE_WINDOW_SECONDS:
+                _hint_requests.pop(key, None)
+    return None
 
 
 @app.middleware("http")
@@ -252,6 +301,9 @@ async def get_hint(payload: HintIn, request: Request):
             if user_response.status_code in (401, 403):
                 raise HTTPException(status_code=401, detail="Invalid or expired access token.")
             user_response.raise_for_status()
+            user_id = user_response.json().get("id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Supabase did not return a user.")
             question_response = await client.get(
                 f"{base_url}/rest/v1/questions",
                 params={
@@ -288,37 +340,58 @@ async def get_hint(payload: HintIn, request: Request):
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Verified solution service is temporarily unreachable.")
 
-    order = [
-        p.strip().lower()
-        for p in os.getenv("AI_PROVIDER_ORDER", "groq,gemini,cerebras").split(",")
-    ]
-    system = (
-        "You are a careful exam tutor. Never invent or change an answer key. "
-        "Use only the supplied server-stored verified solution steps. If insufficient, say a verified solution is needed. "
-        "Do not state an answer key unless it is explicitly present in the supplied steps. Be concise."
-    )
-    user = (
-        f"Topic: {topic}\nHint level: {payload.hint_level}\n"
-        f"Stored verified solution steps: {steps}\n"
-        "Give a useful hint based only on this information."
-    )
-    errors = []
-    for provider in order:
-        if provider not in PROVIDERS or not os.getenv(PROVIDERS[provider][0]):
-            continue
-        try:
-            return {
-                "provider": provider,
-                "hint": await provider_completion(provider, system, user),
-            }
-        except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
-            errors.append(f"{provider}: {type(exc).__name__}")
-    if errors:
-        raise HTTPException(
-            status_code=503,
-            detail={"message": "AI providers unavailable", "providers": errors},
+    cache_digest = sha256(
+        json.dumps({"steps": steps, "topic": topic}, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    cache_key = f"v1:{payload.question_id}:{payload.hint_level}:{cache_digest}"
+    # Per-key async locks prevent concurrent requests from paying for the same inference twice.
+    lock = _hint_locks.setdefault(cache_key, asyncio.Lock())
+    async with lock:
+        cached = _get_cached_hint(cache_key)
+        if cached is not None:
+            return cached
+
+        retry_after = _consume_hint_request(str(user_id))
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=429,
+                detail="Hint rate limit reached. Try again shortly.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        order = [
+            p.strip().lower()
+            for p in os.getenv("AI_PROVIDER_ORDER", "groq,gemini,cerebras").split(",")
+        ]
+        system = (
+            "You are a careful exam tutor. Never invent or change an answer key. "
+            "Use only the supplied server-stored verified solution steps. If insufficient, say a verified solution is needed. "
+            "Do not state an answer key unless it is explicitly present in the supplied steps. Be concise."
         )
-    raise HTTPException(status_code=503, detail="No AI provider configured.")
+        user = (
+            f"Topic: {topic}\nHint level: {payload.hint_level}\n"
+            f"Stored verified solution steps: {steps}\n"
+            "Give a useful hint based only on this information."
+        )
+        errors = []
+        for provider in order:
+            if provider not in PROVIDERS or not os.getenv(PROVIDERS[provider][0]):
+                continue
+            try:
+                result = {
+                    "provider": provider,
+                    "hint": await provider_completion(provider, system, user),
+                }
+                _store_cached_hint(cache_key, result)
+                return result
+            except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
+                errors.append(f"{provider}: {type(exc).__name__}")
+        if errors:
+            raise HTTPException(
+                status_code=503,
+                detail={"message": "AI providers unavailable", "providers": errors},
+            )
+        raise HTTPException(status_code=503, detail="No AI provider configured.")
 
 
 class AuthCredentials(BaseModel):

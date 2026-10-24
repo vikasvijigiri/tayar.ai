@@ -10,6 +10,8 @@ on:
       - ".github/workflows/deployed-api-smoke.yml"
       - ".github/workflows/quality-gates.yml"
   workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
 permissions:
   contents: read
 concurrency:
