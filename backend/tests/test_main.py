@@ -346,6 +346,72 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
     assert "answer_key" not in calls["post"][0]["json"]
 
 
+
+def test_answer_rejects_idempotency_key_reuse_for_different_question(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        def __init__(self, status_code=200, body=None):
+            self.status_code = status_code
+            self.body = [] if body is None else body
+            self.content = b"[]" if isinstance(self.body, list) else b"{}"
+
+        def json(self):
+            return self.body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import httpx
+                request = httpx.Request("GET", "https://supabase.example/test")
+                response = httpx.Response(self.status_code, request=request)
+                raise httpx.HTTPStatusError("fake error", request=request, response=response)
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse(body={"id": "user-123"})
+            if url.endswith("/rest/v1/questions"):
+                return FakeResponse(body=[{
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "answer_key": "B",
+                    "solution_steps": ["Use the verified method"],
+                    "source_document": "verified.pdf",
+                    "source_page": "12",
+                    "active": True,
+                    "source_verified": True,
+                }])
+            if url.endswith("/rest/v1/attempts"):
+                return FakeResponse(body=[{
+                    "question_id": "00000000-0000-4000-8000-000000000002",
+                    "idempotency_key": "00000000-0000-4000-8000-000000000001",
+                    "is_correct": True,
+                    "answer_given": "A",
+                }])
+            raise AssertionError(f"Unexpected fake GET URL: {url}")
+
+        async def post(self, url, params=None, headers=None, json=None):
+            return FakeResponse(status_code=201, body=[])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/v1/questions/00000000-0000-4000-8000-000000000001/answer",
+        headers={"Authorization": "Bearer user-token", "Idempotency-Key": "00000000-0000-4000-8000-000000000001"},
+        json={"answer_given": "B", "elapsed_ms": 4200},
+    )
+    assert response.status_code == 409
+    assert "Idempotency-Key" in response.json()["detail"]
+
 def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
