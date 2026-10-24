@@ -69,6 +69,7 @@ export default function App() {
   const oauthProcessing = useRef(false);
   const signOutPromise = useRef<Promise<void> | null>(null);
   const refreshPromise = useRef<Promise<RefreshOutcome> | null>(null);
+  const sessionGeneration = useRef(0);
   const oauthHandledUrls = useRef<Set<string>>(new Set());
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
@@ -185,12 +186,19 @@ export default function App() {
 
   const storeSession = async (data: { access_token?: unknown; refresh_token?: unknown }) => {
     if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") throw new Error("Sign-in did not return a valid session.");
+    const generation = ++sessionGeneration.current;
+    const pendingRefresh = refreshPromise.current;
+    if (pendingRefresh) await pendingRefresh;
     try {
       await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+      if (generation !== sessionGeneration.current) return;
       await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+      if (generation !== sessionGeneration.current) return;
     } catch (error) {
-      await SecureStore.deleteItemAsync("tayar_access_token");
-      await SecureStore.deleteItemAsync("tayar_refresh_token");
+      await Promise.allSettled([
+        SecureStore.deleteItemAsync("tayar_access_token"),
+        SecureStore.deleteItemAsync("tayar_refresh_token"),
+      ]);
       throw error;
     }
     setToken(data.access_token); setAuthMessage(""); setAuthError(false); setOtp("");
@@ -309,7 +317,10 @@ export default function App() {
       await signOutPromise.current;
       return;
     }
+    ++sessionGeneration.current;
+    const inFlightRefresh = refreshPromise.current;
     const task = (async () => {
+      if (inFlightRefresh) await inFlightRefresh;
       let access: string | null = null;
       try { access = await SecureStore.getItemAsync("tayar_access_token"); } catch { /* Continue with local cleanup. */ }
       if (access) {
@@ -327,7 +338,6 @@ export default function App() {
       answerRequestKeys.current.clear();
       hintCache.current.clear();
       sessionDeadline.current = null;
-      refreshPromise.current = null;
       setToken(null);
       setQuestions([]);
       setQuestionIndex(0);
@@ -359,6 +369,7 @@ export default function App() {
 
   const refreshAccessToken = async (): Promise<RefreshOutcome> => {
     if (refreshPromise.current) return refreshPromise.current;
+    const generation = sessionGeneration.current;
     const task = (async (): Promise<RefreshOutcome> => {
       try {
         const refresh = await SecureStore.getItemAsync("tayar_refresh_token");
@@ -374,9 +385,12 @@ export default function App() {
         if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") {
           return { status: "unavailable" };
         }
+        if (generation !== sessionGeneration.current) return { status: "invalid" };
         try {
           await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+          if (generation !== sessionGeneration.current) return { status: "invalid" };
           await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+          if (generation !== sessionGeneration.current) return { status: "invalid" };
         } catch {
           await Promise.allSettled([
             SecureStore.deleteItemAsync("tayar_access_token"),
