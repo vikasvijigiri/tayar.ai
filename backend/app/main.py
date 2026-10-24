@@ -214,6 +214,8 @@ def config():
         "ai_enabled": any(
             os.getenv(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY")
         ),
+        "supabase_url": os.getenv("SUPABASE_URL", "").rstrip("/"),
+        "supabase_anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
     }
 
 
