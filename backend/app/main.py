@@ -149,8 +149,14 @@ async def observe_requests(request: Request, call_next):
     # must never be stored by shared proxies or intermediary caches.
     if route == "/v1/config":
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
-    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
-        response.headers["Cache-Control"] = "private, no-store"
+    else:
+        # Do not allow shared caches to retain auth, health, metrics or user-specific API responses.
+        response.headers["Cache-Control"] = "no-store"
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     logger.info(
         "request_id=%s method=%s route=%s status=%s duration_ms=%.2f",
         request_id, request.method, route, response.status_code, duration * 1000,
