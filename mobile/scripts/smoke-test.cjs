@@ -13,7 +13,7 @@ if (!app.includes('https://tayar-ai-api.onrender.com')) throw new Error('Missing
 if (!app.includes('/health')) throw new Error('Missing backend health check integration');
 if (!app.includes('AbortController') || !app.includes('DEFAULT_REQUEST_TIMEOUT_MS')) throw new Error('Mobile API calls must have bounded timeouts');
 if (!app.includes('Service unavailable')) throw new Error('Missing offline/error state');
-if (!app.includes('/v1/auth/')) throw new Error('Missing backend authentication integration');
+if (!app.includes('/auth/v1/')) throw new Error('Missing Supabase authentication integration');
 if (!app.includes('tayar_access_token') || !app.includes('tayar_refresh_token')) throw new Error('Missing secure session lifecycle');
 if (!pkg.dependencies['expo-secure-store']) throw new Error('Secure token storage dependency missing');
 if (!app.includes('/v1/questions?exam_id=rrb_ntpc')) throw new Error('Missing verified question list integration');
