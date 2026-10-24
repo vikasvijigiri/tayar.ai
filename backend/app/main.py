@@ -61,9 +61,27 @@ HINT_CACHE_TTL_SECONDS = 3600
 HINT_CACHE_MAX_ENTRIES = 512
 HINT_RATE_LIMIT = 10
 HINT_RATE_WINDOW_SECONDS = 60
+HINT_RATE_LIMIT_MAX_USERS = 5000
+HINT_LOCK_MAX_ENTRIES = 1024
 _hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
-_hint_requests: dict[str, deque[float]] = defaultdict(deque)
-_hint_locks: dict[str, asyncio.Lock] = {}
+_hint_requests: OrderedDict[str, deque[float]] = OrderedDict()
+_hint_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+
+
+def _get_hint_lock(key: str) -> asyncio.Lock | None:
+    """Return a per-key single-flight lock without allowing attacker-controlled growth."""
+    existing = _hint_locks.get(key)
+    if existing is not None:
+        _hint_locks.move_to_end(key)
+        return existing
+    while len(_hint_locks) >= HINT_LOCK_MAX_ENTRIES:
+        idle_key = next((item_key for item_key, item_lock in _hint_locks.items() if not item_lock.locked()), None)
+        if idle_key is None:
+            return None
+        del _hint_locks[idle_key]
+    lock = asyncio.Lock()
+    _hint_locks[key] = lock
+    return lock
 
 
 def _get_cached_hint(key: str) -> dict[str, str | None] | None:
@@ -87,17 +105,21 @@ def _store_cached_hint(key: str, result: dict[str, str | None]) -> None:
 
 def _consume_hint_request(user_id: str) -> int | None:
     now = monotonic()
-    requests = _hint_requests[user_id]
+    requests = _hint_requests.get(user_id)
+    if requests is None:
+        # Evict the least-recently-used account bucket before adding another.
+        # This bounds memory even if an attacker rotates through unique accounts.
+        if len(_hint_requests) >= HINT_RATE_LIMIT_MAX_USERS:
+            _hint_requests.popitem(last=False)
+        requests = deque()
+        _hint_requests[user_id] = requests
+    else:
+        _hint_requests.move_to_end(user_id)
     while requests and now - requests[0] >= HINT_RATE_WINDOW_SECONDS:
         requests.popleft()
     if len(requests) >= HINT_RATE_LIMIT:
         return max(1, int(HINT_RATE_WINDOW_SECONDS - (now - requests[0]) + 0.999))
     requests.append(now)
-    # Bound memory if a large number of accounts visit this single process.
-    if len(_hint_requests) > 5000:
-        for key, timestamps in list(_hint_requests.items()):
-            if not timestamps or now - timestamps[-1] >= HINT_RATE_WINDOW_SECONDS:
-                _hint_requests.pop(key, None)
     return None
 
 
@@ -346,8 +368,14 @@ async def get_hint(payload: HintIn, request: Request):
         json.dumps({"steps": steps, "topic": topic}, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
     cache_key = f"v1:{payload.question_id}:{payload.hint_level}:{cache_digest}"
-    # Per-key async locks prevent concurrent requests from paying for the same inference twice.
-    lock = _hint_locks.setdefault(cache_key, asyncio.Lock())
+    # Per-key async locks prevent duplicate paid inference, with a strict memory bound.
+    lock = _get_hint_lock(cache_key)
+    if lock is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Hint service is busy. Try again shortly.",
+            headers={"Retry-After": "5"},
+        )
     async with lock:
         cached = _get_cached_hint(cache_key)
         if cached is not None:
