@@ -3,7 +3,7 @@ from time import perf_counter
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -326,7 +326,7 @@ class QuestionAnswerIn(BaseModel):
 
 
 @app.get("/v1/questions")
-async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Field(default=10, ge=1, le=50), offset: int = Field(default=0, ge=0)):
+async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
     """Return only active, source-verified questions. Never select answer_key here."""
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
