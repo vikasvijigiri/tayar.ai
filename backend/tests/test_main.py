@@ -54,16 +54,15 @@ def test_attempt_rejects_invalid_confidence():
     assert r.status_code == 422
 
 
-def test_hint_returns_controlled_503_when_no_provider_configured(monkeypatch):
-    for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY"):
-        monkeypatch.delenv(key, raising=False)
+def test_hint_requires_verified_server_solution(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
     r = client.post("/v1/ai/hint", json={
-        "question_id": "q1", "topic": "percentages",
-        "stored_solution_steps": ["Convert the percentage to a fraction"],
+        "question_id": "00000000-0000-0000-0000-000000000001",
         "hint_level": "nudge"
     })
     assert r.status_code == 503
-    assert "No AI provider configured" in r.json()["detail"]
+    assert "Verified solution service is not configured" in r.json()["detail"]
 
 
 def test_persisted_attempt_requires_bearer_token():
