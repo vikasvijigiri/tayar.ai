@@ -57,17 +57,18 @@ For a hosted Grafana/Prometheus setup, deploy the same scrape configuration to a
 ## Deploy
 Render uses `render.yaml`. Configure the environment variables in the Render dashboard after linking the repository:
 - `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-side only; used to read verified questions and fetch answer keys for grading; never expose it to the app)
 - At least one AI key for AI hints: `GROQ_API_KEY`, `GEMINI_API_KEY`, or `CEREBRAS_API_KEY`
 - Optional provider order and model overrides documented in `backend/app/main.py`
 
-Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql` in Supabase SQL Editor. The current attempt endpoint uses the signed-in user's access token and database RLS; it does not need a service-role key.
+Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql` in Supabase SQL Editor. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
 ## CI/CD
 Pushes and pull requests run backend tests, dependency audit, mobile type checking/smoke tests, and Android builds. The Android workflow builds an installable APK and a Play Store AAB, reports their sizes, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts. Pushing a tag such as `v0.1.0` attaches release files to a GitHub Release.
 
 ## Current limitations
 - No source-verified question bank has been imported yet.
-- Full sign-up/sign-in UI, authenticated app session handling, question delivery, answer grading, attempt-history analytics, and end-to-end Supabase integration tests remain to be completed.
+- Sign-up/sign-in UI, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented but require live Supabase integration tests before production use.
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
 - Free-tier quotas, cold starts and usage limits may affect availability.
