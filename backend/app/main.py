@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, deque
 from hashlib import sha256
 from time import monotonic, perf_counter
 from typing import Literal
@@ -17,7 +17,7 @@ from starlette.responses import Response
 
 app = FastAPI(
     title="Tayar.ai Adaptive API",
-    version="0.1.0",
+    version="0.2.0",
     description="Exam-agnostic adaptive learning API; RRB NTPC is the first exam.",
 )
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
@@ -61,9 +61,30 @@ HINT_CACHE_TTL_SECONDS = 3600
 HINT_CACHE_MAX_ENTRIES = 512
 HINT_RATE_LIMIT = 10
 HINT_RATE_WINDOW_SECONDS = 60
+HINT_RATE_LIMIT_MAX_USERS = 5000
+HINT_LOCK_MAX_ENTRIES = 1024
+AI_PROVIDER_MAX_CONCURRENCY = 8
+AI_PROVIDER_QUEUE_TIMEOUT_SECONDS = 2.0
+_ai_provider_semaphore = asyncio.Semaphore(AI_PROVIDER_MAX_CONCURRENCY)
 _hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
-_hint_requests: dict[str, deque[float]] = defaultdict(deque)
-_hint_locks: dict[str, asyncio.Lock] = {}
+_hint_requests: OrderedDict[str, deque[float]] = OrderedDict()
+_hint_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+
+
+def _get_hint_lock(key: str) -> asyncio.Lock | None:
+    """Return a per-key single-flight lock without allowing attacker-controlled growth."""
+    existing = _hint_locks.get(key)
+    if existing is not None:
+        _hint_locks.move_to_end(key)
+        return existing
+    while len(_hint_locks) >= HINT_LOCK_MAX_ENTRIES:
+        idle_key = next((item_key for item_key, item_lock in _hint_locks.items() if not item_lock.locked()), None)
+        if idle_key is None:
+            return None
+        del _hint_locks[idle_key]
+    lock = asyncio.Lock()
+    _hint_locks[key] = lock
+    return lock
 
 
 def _get_cached_hint(key: str) -> dict[str, str | None] | None:
@@ -87,17 +108,21 @@ def _store_cached_hint(key: str, result: dict[str, str | None]) -> None:
 
 def _consume_hint_request(user_id: str) -> int | None:
     now = monotonic()
-    requests = _hint_requests[user_id]
+    requests = _hint_requests.get(user_id)
+    if requests is None:
+        # Evict the least-recently-used account bucket before adding another.
+        # This bounds memory even if an attacker rotates through unique accounts.
+        if len(_hint_requests) >= HINT_RATE_LIMIT_MAX_USERS:
+            _hint_requests.popitem(last=False)
+        requests = deque()
+        _hint_requests[user_id] = requests
+    else:
+        _hint_requests.move_to_end(user_id)
     while requests and now - requests[0] >= HINT_RATE_WINDOW_SECONDS:
         requests.popleft()
     if len(requests) >= HINT_RATE_LIMIT:
         return max(1, int(HINT_RATE_WINDOW_SECONDS - (now - requests[0]) + 0.999))
     requests.append(now)
-    # Bound memory if a large number of accounts visit this single process.
-    if len(_hint_requests) > 5000:
-        for key, timestamps in list(_hint_requests.items()):
-            if not timestamps or now - timestamps[-1] >= HINT_RATE_WINDOW_SECONDS:
-                _hint_requests.pop(key, None)
     return None
 
 
@@ -124,8 +149,14 @@ async def observe_requests(request: Request, call_next):
     # must never be stored by shared proxies or intermediary caches.
     if route == "/v1/config":
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
-    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
-        response.headers["Cache-Control"] = "private, no-store"
+    else:
+        # Do not allow shared caches to retain auth, health, metrics or user-specific API responses.
+        response.headers["Cache-Control"] = "no-store"
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     logger.info(
         "request_id=%s method=%s route=%s status=%s duration_ms=%.2f",
         request_id, request.method, route, response.status_code, duration * 1000,
@@ -221,6 +252,10 @@ def config():
 
 @app.post("/v1/attempts/preview")
 def preview_attempt(payload: AttemptIn):
+    enabled = os.getenv("ENABLE_ATTEMPT_PREVIEW", "false").strip().lower() in {"1", "true", "yes"}
+    if not enabled:
+        # Development-only endpoint; disabled by default in deployed environments.
+        raise HTTPException(status_code=404, detail="Not found.")
     return {
         "accepted": True,
         "attempt": payload.model_dump(),
@@ -346,8 +381,14 @@ async def get_hint(payload: HintIn, request: Request):
         json.dumps({"steps": steps, "topic": topic}, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
     cache_key = f"v1:{payload.question_id}:{payload.hint_level}:{cache_digest}"
-    # Per-key async locks prevent concurrent requests from paying for the same inference twice.
-    lock = _hint_locks.setdefault(cache_key, asyncio.Lock())
+    # Per-key async locks prevent duplicate paid inference, with a strict memory bound.
+    lock = _get_hint_lock(cache_key)
+    if lock is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Hint service is busy. Try again shortly.",
+            headers={"Retry-After": "5"},
+        )
     async with lock:
         cached = _get_cached_hint(cache_key)
         if cached is not None:
@@ -380,6 +421,17 @@ async def get_hint(payload: HintIn, request: Request):
             if provider not in PROVIDERS or not os.getenv(PROVIDERS[provider][0]):
                 continue
             try:
+                await asyncio.wait_for(
+                    _ai_provider_semaphore.acquire(),
+                    timeout=AI_PROVIDER_QUEUE_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="AI hint service is busy. Try again shortly.",
+                    headers={"Retry-After": "5"},
+                ) from exc
+            try:
                 result = {
                     "provider": provider,
                     "hint": await provider_completion(provider, system, user),
@@ -388,6 +440,8 @@ async def get_hint(payload: HintIn, request: Request):
                 return result
             except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
                 errors.append(f"{provider}: {type(exc).__name__}")
+            finally:
+                _ai_provider_semaphore.release()
         if errors:
             raise HTTPException(
                 status_code=503,
@@ -442,7 +496,7 @@ def choose_question_strategy(weakest_topic: dict | None, topic_question_count: i
 @app.get("/v1/questions")
 async def list_verified_questions(
     request: Request,
-    exam_id: str = "rrb_ntpc",
+    exam_id: str = Query(default="rrb_ntpc", pattern=r"^[a-z0-9_]{1,64}$"),
     limit: int = Query(default=10, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
 ):
@@ -673,7 +727,7 @@ async def answer_verified_question(
                 existing_response = await client.get(
                     f"{base_url}/rest/v1/attempts",
                     params={
-                        "select": "idempotency_key,is_correct,answer_given",
+                        "select": "question_id,idempotency_key,is_correct,answer_given",
                         "user_id": f"eq.{user_id}",
                         "idempotency_key": f"eq.{idempotency_key}",
                         "limit": "1",
@@ -684,7 +738,16 @@ async def answer_verified_question(
                 saved_rows = existing_response.json()
                 if not saved_rows:
                     raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
-                is_correct = bool(saved_rows[0]["is_correct"])
+                existing = saved_rows[0]
+                if (
+                    str(existing.get("question_id")) != str(question_id)
+                    or existing.get("answer_given") != payload.answer_given
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Idempotency-Key was already used for a different answer.",
+                    )
+                is_correct = bool(existing["is_correct"])
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
@@ -757,7 +820,7 @@ def summarize_attempt_rows(rows: list[dict]) -> dict:
 @app.get("/v1/attempts/history")
 async def attempts_history(
     request: Request,
-    exam_id: str = "rrb_ntpc",
+    exam_id: str = Query(default="rrb_ntpc", pattern=r"^[a-z0-9_]{1,64}$"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
@@ -824,7 +887,7 @@ async def attempts_history(
 
 
 @app.get("/v1/attempts/summary")
-async def attempts_summary(request: Request, exam_id: str = "rrb_ntpc"):
+async def attempts_summary(request: Request, exam_id: str = Query(default="rrb_ntpc", pattern=r"^[a-z0-9_]{1,64}$")):
     """Compute user-only accuracy, speed and topic signals after verifying the Supabase session."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")

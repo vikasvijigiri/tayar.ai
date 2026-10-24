@@ -5,6 +5,7 @@ The mobile app intentionally supports **SMS OTP and Google OAuth only**. Email/p
 ## Supabase Auth configuration
 
 - Enable Phone authentication and configure a real SMS provider with delivery, spending limits, and rate limits.
+- Disable Email provider sign-up/sign-in in Supabase Auth. Hiding email/password in the app and removing backend endpoints does not disable Supabase's public Auth endpoints; this dashboard setting is required to enforce phone/Google-only authentication.
 - Enable the Google provider and configure the Google OAuth client ID/secret in Supabase Auth. Keep provider secrets in Supabase; never ship them in the app or backend public config.
 - Add this exact callback to Supabase Auth > URL Configuration > Additional Redirect URLs:
   - `tayarai://auth/callback`
@@ -23,4 +24,4 @@ The mobile app intentionally supports **SMS OTP and Google OAuth only**. Email/p
 
 ## Database hardening applied
 
-The project function `public.rls_auto_enable()` is an event-trigger function. Execute permission was revoked from `PUBLIC`, `anon`, and `authenticated`; verification confirmed the event trigger remains attached and those roles can no longer execute the function directly.
+The project function `public.rls_auto_enable()` is an event-trigger function. Execute permission was revoked from `PUBLIC`, `anon`, and `authenticated`; verification confirmed the event trigger remains attached and those roles can no longer execute the function directly. Database indexes and optimized `auth.uid()` policy expressions are tracked in the corresponding migration.
