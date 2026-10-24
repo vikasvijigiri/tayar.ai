@@ -1,0 +1,54 @@
+groups:
+  - name: tayar-ai-api
+    interval: 30s
+    rules:
+      - alert: TayarApiMetricsTargetDown
+        expr: up{job="tayar-ai-api-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Tayar.ai API metrics endpoint is unreachable
+          description: Prometheus has failed to scrape the API metrics endpoint for at least two minutes.
+
+      - alert: TayarApiLivenessFailed
+        expr: probe_success{job="tayar-ai-api-liveness"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Tayar.ai API liveness check is failing
+          description: The public /health endpoint has not returned HTTP 200 for at least two minutes.
+
+      - alert: TayarApiReadinessFailed
+        expr: probe_success{job="tayar-ai-api-readiness"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tayar.ai API dependencies are not ready
+          description: The /health/ready endpoint has not returned HTTP 200; check Supabase environment variables and connectivity.
+
+      - alert: TayarApiHigh5xxRate
+        expr: |
+          sum(rate(tayar_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(tayar_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tayar.ai API 5xx rate exceeds 5 percent
+          description: More than five percent of observed API requests returned 5xx responses over five minutes.
+
+      - alert: TayarApiHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(tayar_http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tayar.ai API p95 latency exceeds one second
+          description: The 95th percentile request latency has exceeded one second for ten minutes.
