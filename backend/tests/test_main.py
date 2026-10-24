@@ -507,7 +507,7 @@ def test_question_list_adapts_to_weak_topic_without_exposing_answer_key(monkeypa
             if url.endswith("/rest/v1/topics"):
                 assert params["slug"] == "eq.algebra"
                 return FakeResponse([{"id": "topic-1"}])
-            if url.endswith("/rest/v1/questions") and headers.get("Prefer") == "count=exact":
+            if url.endswith("/rest/v1/questions") and params.get("select") == "id":
                 return FakeResponse([{"id": "q1"}], headers={"content-range": "0-0/12"})
             if url.endswith("/rest/v1/questions"):
                 requested_question_params.update(params)
