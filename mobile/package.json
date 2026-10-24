@@ -9,16 +9,16 @@
     "test": "node ./scripts/smoke-test.cjs"
   },
   "dependencies": {
-    "expo": "~52.0.0",
-    "expo-status-bar": "~2.0.1",
-    "react": "18.3.1",
-    "react-native": "0.76.5",
-    "expo-asset": "~11.0.5",
-    "expo-build-properties": "~0.13.1",
-    "expo-secure-store": "~14.0.0"
+    "expo": "~53.0.27",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "expo-asset": "~11.1.7",
+    "expo-build-properties": "~0.14.8",
+    "expo-secure-store": "~14.2.3"
   },
   "devDependencies": {
-    "@types/react": "~18.3.12",
-    "typescript": "~5.3.3"
+    "@types/react": "~19.0.10",
+    "typescript": "~5.8.3"
   }
 }
