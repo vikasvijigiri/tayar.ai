@@ -73,6 +73,49 @@ def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+@app.get("/health/ready")
+async def readiness():
+    """Readiness probe for configured backend dependencies; never returns secret values."""
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not anon_key or not service_key:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "dependencies": {"supabase": "missing_configuration"},
+            },
+        )
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{base_url}/rest/v1/exams",
+                params={"select": "id", "limit": "1"},
+                headers=headers,
+            )
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"supabase": "unavailable"}},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "dependencies": {"supabase": "unreachable"}},
+        )
+    return {
+        "status": "ready",
+        "dependencies": {
+            "supabase": "connected",
+            "ai_provider_configured": any(
+                os.getenv(key) for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY")
+            ),
+        },
+    }
+
+
 @app.get("/v1/config")
 def config():
     return {
