@@ -1,16 +1,52 @@
 import os
+from time import perf_counter
 from typing import Literal
+
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from starlette.responses import Response
 
-app = FastAPI(title="Tayar.ai Adaptive API", version="0.1.0",
-              description="Exam-agnostic adaptive learning API; RRB NTPC is the first exam.")
+app = FastAPI(
+    title="Tayar.ai Adaptive API",
+    version="0.1.0",
+    description="Exam-agnostic adaptive learning API; RRB NTPC is the first exam.",
+)
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=origins or ["*"],
-                   allow_credentials=False, allow_methods=["GET", "POST"],
-                   allow_headers=["Content-Type", "Authorization"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins or ["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+
+REQUEST_COUNT = Counter(
+    "tayar_http_requests_total",
+    "Total HTTP requests handled by Tayar.ai API",
+    ["method", "route", "status"],
+)
+REQUEST_LATENCY = Histogram(
+    "tayar_http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "route"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+)
+
+
+@app.middleware("http")
+async def observe_requests(request: Request, call_next):
+    started = perf_counter()
+    response = await call_next(request)
+    route_obj = request.scope.get("route")
+    route = getattr(route_obj, "path", "unmatched")
+    if route != "/metrics":
+        REQUEST_COUNT.labels(request.method, route, str(response.status_code)).inc()
+        REQUEST_LATENCY.labels(request.method, route).observe(perf_counter() - started)
+    return response
+
 
 class AttemptIn(BaseModel):
     question_id: str
@@ -20,62 +56,125 @@ class AttemptIn(BaseModel):
     elapsed_ms: int = Field(ge=0, le=3600000)
     confidence: int | None = Field(default=None, ge=1, le=5)
 
+
 class HintIn(BaseModel):
     question_id: str
     topic: str
     stored_solution_steps: list[str] = Field(default_factory=list, max_length=12)
     hint_level: Literal["nudge", "method", "steps"] = "nudge"
 
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "tayar-ai-api", "version": app.version}
 
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.get("/v1/config")
 def config():
-    return {"supported_exams": [{"id": "rrb_ntpc", "name": "RRB NTPC"}],
-            "adaptive_metrics": ["overall_accuracy", "last_5_accuracy", "weakness", "retention", "time_efficiency"],
-            "ai_enabled": any(os.getenv(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY"))}
+    return {
+        "supported_exams": [{"id": "rrb_ntpc", "name": "RRB NTPC"}],
+        "adaptive_metrics": [
+            "overall_accuracy",
+            "last_5_accuracy",
+            "weakness",
+            "retention",
+            "time_efficiency",
+        ],
+        "ai_enabled": any(
+            os.getenv(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY")
+        ),
+    }
+
 
 @app.post("/v1/attempts/preview")
 def preview_attempt(payload: AttemptIn):
-    return {"accepted": True, "attempt": payload.model_dump(),
-            "note": "Preview only; configure authentication and persistence before production use."}
+    return {
+        "accepted": True,
+        "attempt": payload.model_dump(),
+        "note": "Preview only; configure authentication and persistence before production use.",
+    }
+
 
 PROVIDERS = {
-    "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1/chat/completions", "GROQ_MODEL", "llama-3.3-70b-versatile"),
-    "gemini": ("GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "GEMINI_MODEL", "gemini-2.0-flash"),
-    "cerebras": ("CEREBRAS_API_KEY", "https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_MODEL", "llama3.1-8b"),
+    "groq": (
+        "GROQ_API_KEY",
+        "https://api.groq.com/openai/v1/chat/completions",
+        "GROQ_MODEL",
+        "llama-3.3-70b-versatile",
+    ),
+    "gemini": (
+        "GEMINI_API_KEY",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "GEMINI_MODEL",
+        "gemini-2.0-flash",
+    ),
+    "cerebras": (
+        "CEREBRAS_API_KEY",
+        "https://api.cerebras.ai/v1/chat/completions",
+        "CEREBRAS_MODEL",
+        "llama3.1-8b",
+    ),
 }
+
 
 async def provider_completion(provider: str, system_prompt: str, user_prompt: str) -> str:
     key_env, url, model_env, default_model = PROVIDERS[provider]
     key = os.getenv(key_env)
     if not key:
         raise RuntimeError(f"{provider} not configured")
-    body = {"model": os.getenv(model_env, default_model),
-            "messages": [{"role": "system", "content": system_prompt},
-                         {"role": "user", "content": user_prompt}],
-            "temperature": 0.2, "max_tokens": 500}
+    body = {
+        "model": os.getenv(model_env, default_model),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 500,
+    }
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
+        response = await client.post(
+            url, json=body, headers={"Authorization": f"Bearer {key}"}
+        )
         response.raise_for_status()
         data = response.json()
     return data["choices"][0]["message"]["content"]
 
+
 @app.post("/v1/ai/hint")
 async def get_hint(payload: HintIn):
-    order = [p.strip().lower() for p in os.getenv("AI_PROVIDER_ORDER", "groq,gemini,cerebras").split(",")]
-    system = ("You are a careful exam tutor. Never invent or change an answer key. Use only supplied stored solution steps. "
-              "If insufficient, say a verified solution is needed. Be concise.")
-    user = f"Topic: {payload.topic}\nHint level: {payload.hint_level}\nStored verified solution steps: {payload.stored_solution_steps}\nGive a useful hint based only on this information."
+    order = [
+        p.strip().lower()
+        for p in os.getenv("AI_PROVIDER_ORDER", "groq,gemini,cerebras").split(",")
+    ]
+    system = (
+        "You are a careful exam tutor. Never invent or change an answer key. "
+        "Use only supplied stored solution steps. If insufficient, say a verified solution is needed. "
+        "Be concise."
+    )
+    user = (
+        f"Topic: {payload.topic}\nHint level: {payload.hint_level}\n"
+        f"Stored verified solution steps: {payload.stored_solution_steps}\n"
+        "Give a useful hint based only on this information."
+    )
     errors = []
     for provider in order:
         if provider not in PROVIDERS or not os.getenv(PROVIDERS[provider][0]):
             continue
         try:
-            return {"provider": provider, "hint": await provider_completion(provider, system, user)}
+            return {
+                "provider": provider,
+                "hint": await provider_completion(provider, system, user),
+            }
         except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
             errors.append(f"{provider}: {type(exc).__name__}")
     if errors:
-        raise HTTPException(status_code=503, detail={"message": "AI providers unavailable", "providers": errors})
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "AI providers unavailable", "providers": errors},
+        )
     raise HTTPException(status_code=503, detail="No AI provider configured.")
