@@ -66,6 +66,8 @@ export default function App() {
   const [hintLoading, setHintLoading] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(480);
+  const [questionStrategy, setQuestionStrategy] = useState<"baseline" | "mixed_baseline" | "weak_topic_focus">("baseline");
+  const [focusTopic, setFocusTopic] = useState<{ slug: string; topic: string; attempts: number; accuracy_pct: number } | null>(null);
   const questionStartedAt = useRef(Date.now());
   const sessionDeadline = useRef<number | null>(null);
 
@@ -191,6 +193,8 @@ export default function App() {
         if (active) {
           setQuestions(Array.isArray(data.questions) ? data.questions : []);
           setQuestionIndex(0);
+          setQuestionStrategy(data.strategy || "baseline");
+          setFocusTopic(data.focus_topic || null);
         }
       } catch (error) {
         if (active) setQuestionError(error instanceof Error ? error.message : "Unable to load verified questions.");
@@ -369,6 +373,8 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
+      setQuestionStrategy(data.strategy || "baseline");
+      setFocusTopic(data.focus_topic || null);
       if (next.length) {
         setQuestions(current => [...current, ...next]);
         setQuestionIndex(current => current + 1);
@@ -414,6 +420,7 @@ export default function App() {
         <Text style={s.section}>Practice workspace</Text>
         <View style={s.card}>
           <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
+          <Text style={s.small}>{questionStrategy === "weak_topic_focus" && focusTopic ? `Adaptive focus · ${focusTopic.topic} · ${focusTopic.accuracy_pct}% recent accuracy` : questionStrategy === "mixed_baseline" && focusTopic ? `Mixed set · ${focusTopic.topic} needs attention; the verified bank is still too small for a full focused set.` : "Mixed verified practice · question focus adapts as your attempt history grows."}</Text>
           {questions.length > 0 && <>
             <View style={s.timerRow}>
               <View><Text style={s.timerCaption}>8-MINUTE PRACTICE SET</Text><Text style={[s.timerValue,remainingSeconds<=60&&{color:C.red}]}>{timerLabel}</Text></View>
