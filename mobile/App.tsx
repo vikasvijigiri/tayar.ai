@@ -161,10 +161,6 @@ export default function App() {
     setAuthError(false);
   };
 
-  if (sessionLoading) {
-    return <SafeAreaView style={s.safe}><StatusBar barStyle="light-content" backgroundColor={C.bg}/><View style={s.loadingScreen}><ActivityIndicator color={C.teal} size="large"/><Text style={s.statusText}>Preparing your secure session…</Text></View></SafeAreaView>;
-  }
-
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -215,6 +211,10 @@ export default function App() {
     questionStartedAt.current = Date.now();
   }, [questionIndex]);
 
+
+  if (sessionLoading) {
+    return <SafeAreaView style={s.safe}><StatusBar barStyle="light-content" backgroundColor={C.bg}/><View style={s.loadingScreen}><ActivityIndicator color={C.teal} size="large"/><Text style={s.statusText}>Preparing your secure session…</Text></View></SafeAreaView>;
+  }
 
   if (!token) {
     return (
