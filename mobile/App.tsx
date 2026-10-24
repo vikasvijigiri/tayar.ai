@@ -76,6 +76,10 @@ export default function App() {
                 return;
               }
             }
+            if (response.status >= 500) {
+              if (active) setToken(savedAccess);
+              return;
+            }
             await SecureStore.deleteItemAsync("tayar_access_token");
             await SecureStore.deleteItemAsync("tayar_refresh_token");
           } catch {
