@@ -1,0 +1,28 @@
+import React, { useState } from "react";
+import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+const C={bg:"#0A1020",panel:"#121C30",panel2:"#17243B",text:"#F4F7FC",muted:"#9AAAC3",teal:"#53E0C1",blue:"#85A9FF",amber:"#FFC76A",border:"#263650"};
+export default function App(){
+ const [tab,setTab]=useState("Today");
+ const lastFiveAccuracy="—"; const overallAccuracy="—";
+ return <SafeAreaView style={s.safe}><StatusBar barStyle="light-content" backgroundColor={C.bg}/><ScrollView contentContainerStyle={s.page}>
+  <View style={s.top}><View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View><View style={s.avatar}><Text style={{color:C.teal,fontWeight:"800"}}>NT</Text></View></View>
+  <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text><Text style={s.heading}>Make every{"\n"}attempt count.</Text><Text style={s.sub}>RRB NTPC · Adaptive practice</Text>
+  <View style={s.hero}><Text style={s.label}>READINESS INDEX</Text><Text style={s.heroTitle}>Building your baseline</Text><View style={s.track}><View style={s.fill}/></View><Text style={s.small}>Complete verified practice sessions to unlock personalised insights.</Text></View>
+  <Text style={s.section}>Your learning signals</Text><View style={s.grid}><Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/><Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/><Metric label="WEAKNESS RADAR" value="Not enough data" color={C.amber}/><Metric label="MOMENTUM" value="Awaiting attempts" color={C.teal}/></View>
+  <Text style={s.section}>Your next best action</Text><View style={s.card}><Text style={s.cardTitle}>Establish your baseline</Text><Text style={s.body}>A short diagnostic identifies topics needing attention first. Practice will use verified source material only.</Text></View>
+  <Text style={s.section}>Practice workspace</Text><View style={s.card}><Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text><Text style={s.cardTitle}>Your verified question bank is being prepared.</Text><Text style={s.body}>No invented exam questions or answer keys. Each question will have source references, topic tags, verified answers and reusable solution steps.</Text><View style={s.disabled}><Text style={s.small}>Practice unlocks after content verification</Text></View></View>
+  <View style={s.nav}>{["Today","Topics","Progress"].map(x=><TouchableOpacity key={x} onPress={()=>setTab(x)} style={[s.navItem,tab===x&&s.active]}><Text style={{color:tab===x?C.teal:C.muted,fontWeight:"700"}}>{x}</Text></TouchableOpacity>)}</View>
+  {tab!=="Today"&&<View style={s.card}><Text style={s.cardTitle}>{tab==="Topics"?"Topic mastery":"Progress history"}</Text><Text style={s.body}>This view will populate from verified question attempts. No performance is fabricated.</Text></View>}
+  <Text style={s.footer}>Built for consistency, not empty streaks · v0.1.0</Text>
+ </ScrollView></SafeAreaView>
+}
+function Metric({label,value,color}:{label:string,value:string,color:string}){return <View style={s.metric}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text><Text style={s.small}>Awaiting practice</Text></View>}
+const s=StyleSheet.create({
+ safe:{flex:1,backgroundColor:C.bg},page:{paddingHorizontal:20,paddingTop:18,paddingBottom:30},top:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:28},
+ brand:{color:C.text,fontSize:22,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},avatar:{width:42,height:42,borderRadius:15,backgroundColor:C.panel2,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:C.border},
+ eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},heading:{color:C.text,fontSize:35,lineHeight:40,fontWeight:"800",letterSpacing:-1},sub:{color:C.muted,fontSize:14,marginTop:10,marginBottom:22},
+ hero:{backgroundColor:C.panel,borderRadius:22,padding:18,borderWidth:1,borderColor:C.border,marginBottom:26},label:{color:C.muted,fontSize:10,letterSpacing:1.2,fontWeight:"800"},heroTitle:{color:C.text,fontSize:18,fontWeight:"700",marginTop:8},track:{height:6,borderRadius:8,backgroundColor:"#263650",marginTop:20,marginBottom:12,overflow:"hidden"},fill:{height:6,width:"8%",backgroundColor:C.teal},small:{color:C.muted,fontSize:11,lineHeight:16},section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:13,marginTop:2},
+ grid:{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",marginBottom:22},metric:{width:"48.2%",minHeight:122,padding:13,borderRadius:17,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:10},metricLabel:{color:C.muted,fontSize:9,fontWeight:"800",letterSpacing:.5},metricValue:{color:C.text,fontSize:16,fontWeight:"800",marginTop:9,marginBottom:5},
+ card:{padding:17,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},cardTitle:{color:C.text,fontSize:15,fontWeight:"800",marginTop:10,marginBottom:8},body:{color:C.muted,fontSize:12,lineHeight:19},tag:{color:C.teal,fontSize:9,fontWeight:"900",letterSpacing:1},disabled:{borderRadius:12,padding:12,alignItems:"center",backgroundColor:"#202D43",marginTop:18},
+ nav:{flexDirection:"row",backgroundColor:C.panel,borderRadius:16,borderWidth:1,borderColor:C.border,padding:5,marginTop:2,marginBottom:14},navItem:{flex:1,paddingVertical:12,alignItems:"center",borderRadius:12},active:{backgroundColor:"#173C3D"},footer:{color:"#61728C",fontSize:10,textAlign:"center",marginTop:8}
+});
