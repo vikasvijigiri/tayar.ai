@@ -575,3 +575,78 @@ def test_attempt_summary_filters_history_to_selected_exam(monkeypatch):
     assert response.status_code == 200
     assert response.json()["exam_id"] == "rrb_ntpc"
     assert response.json()["total_attempts"] == 0
+
+
+
+def test_attempt_history_requires_bearer_token():
+    response = client.get("/v1/attempts/history")
+    assert response.status_code == 401
+
+
+def test_attempt_history_is_paginated_and_does_not_expose_answer_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    captured_params = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            assert url.endswith("/rest/v1/attempts")
+            captured_params.update(params)
+            return FakeResponse([{
+                "question_id": "question-1",
+                "answer_given": "B",
+                "is_correct": False,
+                "elapsed_ms": 12400,
+                "created_at": "2026-10-24T08:00:00Z",
+                "questions": {
+                    "exam_id": "rrb_ntpc",
+                    "topic_id": "topic-1",
+                    "question_text": "A source-verified question?",
+                    "answer_key": "C",
+                    "source_document": "verified.pdf",
+                    "source_page": "12",
+                    "topics": {"name": "Percentage", "slug": "percentage"},
+                },
+            }])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get(
+        "/v1/attempts/history?exam_id=rrb_ntpc&limit=5&offset=10",
+        headers={"Authorization": "Bearer test-user-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 5 and body["offset"] == 10
+    assert body["attempts"][0]["topic"] == "Percentage"
+    assert body["attempts"][0]["is_correct"] is False
+    assert body["attempts"][0]["source_page"] == "12"
+    assert "answer_key" not in body["attempts"][0]
+    assert "answer_key" not in body["attempts"][0]["question_text"]
+    assert captured_params["user_id"] == "eq.user-123"
+    assert captured_params["questions.exam_id"] == "eq.rrb_ntpc"
+    assert captured_params["limit"] == "5" and captured_params["offset"] == "10"
