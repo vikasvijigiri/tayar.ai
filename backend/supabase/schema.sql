@@ -66,7 +66,7 @@ begin
       and object_type in ('table', 'partitioned table')
   loop
     if cmd.schema_name is not null
-       and cmd.schema_name = 'public'
+       and cmd.schema_name IN ('public')
        and cmd.schema_name not in ('pg_catalog', 'information_schema')
        and cmd.schema_name not like 'pg_toast%'
        and cmd.schema_name not like 'pg_temp%' then
