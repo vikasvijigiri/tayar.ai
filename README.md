@@ -30,7 +30,7 @@ Endpoints:
 - `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
 - `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
 - `GET /v1/attempts/history` — paginated, authenticated recent answer history for review; does not expose answer keys
-- `POST /v1/attempts/preview` — development-only validation preview; does not persist
+- `POST /v1/attempts/preview` — development-only validation preview; disabled unless `ENABLE_ATTEMPT_PREVIEW=true`; does not persist
 - `POST /v1/ai/hint` — authenticated hints based only on stored verified solution steps
 
 Open `http://127.0.0.1:8000/docs` for the OpenAPI schema.
