@@ -15,6 +15,21 @@ import {
 import * as SecureStore from "expo-secure-store";
 
 const API_BASE_URL = "https://tayar-ai-api.onrender.com";
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+
+async function apiFetch(
+  url: string,
+  init: Parameters<typeof fetch>[1] = {},
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 const C = {
   bg: "#0A1020", panel: "#121C30", panel2: "#17243B", text: "#F4F7FC",
   muted: "#9AAAC3", teal: "#53E0C1", blue: "#85A9FF", amber: "#FFC76A",
@@ -63,7 +78,7 @@ export default function App() {
         if (!savedAccess) return;
         if (savedRefresh) {
           try {
-            const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+            const response = await apiFetch(`${API_BASE_URL}/v1/auth/refresh`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ refresh_token: savedRefresh }),
@@ -102,7 +117,7 @@ export default function App() {
     let active = true;
     const check = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/health`);
+        const response = await apiFetch(`${API_BASE_URL}/health`);
         if (!response.ok) throw new Error("API health check failed");
         const data = await response.json();
         if (data.status !== "ok") throw new Error("Unexpected health response");
@@ -126,7 +141,7 @@ export default function App() {
     }
     setAuthLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/${authMode}`, {
+      const response = await apiFetch(`${API_BASE_URL}/v1/auth/${authMode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizedEmail, password }),
@@ -168,7 +183,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await fetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0");
+        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0");
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -190,7 +205,7 @@ export default function App() {
     let active = true;
     const loadSummary = async () => {
       try {
-        const response = await fetch(API_BASE_URL + "/v1/attempts/summary", {
+        const response = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
@@ -260,7 +275,7 @@ export default function App() {
     setAnswerLoading(true);
     setQuestionError("");
     try {
-      const response = await fetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({
@@ -278,7 +293,7 @@ export default function App() {
       }
       setFeedback(data as AnswerFeedback);
       try {
-        const summaryResponse = await fetch(API_BASE_URL + "/v1/attempts/summary", {
+        const summaryResponse = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
@@ -298,7 +313,7 @@ export default function App() {
     setHintLoading(true);
     setQuestionError("");
     try {
-      const response = await fetch(API_BASE_URL + "/v1/ai/hint", {
+      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
@@ -318,7 +333,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await fetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length);
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length);
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
