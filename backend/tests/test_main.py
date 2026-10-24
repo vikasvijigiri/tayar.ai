@@ -342,7 +342,8 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
     assert body["source_document"] == "verified.pdf"
     assert calls["post"][0]["json"]["user_id"] == "user-123"
     assert calls["post"][0]["json"]["is_correct"] is True
-    assert calls["post"][0]["headers"]["Authorization"] == "Bearer user-token"
+    assert calls["post"][0]["headers"]["Authorization"] == "Bearer server-only-test-key"
+    assert calls["post"][0]["headers"]["apikey"] == "server-only-test-key"
     assert "answer_key" not in calls["post"][0]["json"]
 
 
@@ -690,3 +691,18 @@ def test_attempt_history_is_paginated_and_does_not_expose_answer_key(monkeypatch
     assert captured_params["user_id"] == "eq.user-123"
     assert captured_params["questions.exam_id"] == "eq.rrb_ntpc"
     assert captured_params["limit"] == "5" and captured_params["offset"] == "10"
+
+
+def test_hint_lock_registry_is_bounded_and_preserves_locked_entries():
+    main._hint_locks.clear()
+    locked = main._get_hint_lock("locked-key")
+
+    async def hold_lock():
+        async with locked:
+            for index in range(main.HINT_LOCK_MAX_ENTRIES + 10):
+                main._get_hint_lock(f"key-{index}")
+            assert main._hint_locks.get("locked-key") is locked
+
+    asyncio.run(hold_lock())
+    assert len(main._hint_locks) <= main.HINT_LOCK_MAX_ENTRIES + 1
+    main._hint_locks.clear()
