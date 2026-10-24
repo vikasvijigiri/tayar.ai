@@ -43,29 +43,67 @@ jobs:
         env:
           API_BASE_URL: https://tayar-ai-api.onrender.com
         run: |
-          check_status() {
+          wait_get_status() {
             path="$1"
             expected="$2"
-            code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' "$API_BASE_URL$path")
-            echo "$path returned HTTP $code (expected $expected)"
-            test "$code" = "$expected"
+            for attempt in $(seq 1 12); do
+              code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' "$API_BASE_URL$path" || true)
+              echo "$path attempt $attempt returned HTTP $code (expected $expected)"
+              if [ "$code" = "$expected" ]; then return 0; fi
+              sleep 15
+            done
+            return 1
           }
-          check_status "/v1/attempts/summary" "401"
-          code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' -X POST -H "Content-Type: application/json" -d '{"question_id":"00000000-0000-0000-0000-000000000001","hint_level":"nudge"}' "$API_BASE_URL/v1/ai/hint")
-          echo "AI hint endpoint returned HTTP $code (expected 401)"
-          test "$code" = "401"
-          code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' -X POST -H "Content-Type: application/json" -d '{"answer_given":"A","elapsed_ms":1000}' "$API_BASE_URL/v1/questions/00000000-0000-0000-0000-000000000001/answer")
-          echo "Answer endpoint returned HTTP $code (expected 401)"
-          test "$code" = "401"
+          wait_post_status() {
+            path="$1"
+            body="$2"
+            expected="$3"
+            for attempt in $(seq 1 12); do
+              code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' -X POST -H "Content-Type: application/json" -d "$body" "$API_BASE_URL$path" || true)
+              echo "$path attempt $attempt returned HTTP $code (expected $expected)"
+              if [ "$code" = "$expected" ]; then return 0; fi
+              sleep 15
+            done
+            return 1
+          }
+          wait_get_status "/v1/attempts/summary" "401"
+          wait_post_status "/v1/ai/hint" '{"question_id":"00000000-0000-0000-0000-000000000001","hint_level":"nudge"}' "401"
+          wait_post_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" '{"answer_given":"A","elapsed_ms":1000}' "401"
 
       - name: Verify Supabase-backed readiness and verified question delivery
         env:
           API_BASE_URL: https://tayar-ai-api.onrender.com
         run: |
-          curl --fail --silent --show-error "$API_BASE_URL/health/ready" | tee /tmp/readiness.json
-          grep -q '"status":"ready"' /tmp/readiness.json
-          curl --fail --silent --show-error "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0" | tee /tmp/questions.json
-          grep -q '"questions"' /tmp/questions.json
+          ready=false
+          for attempt in $(seq 1 12); do
+            code=$(curl -sS -o /tmp/readiness.json -w '%{http_code}' "$API_BASE_URL/health/ready" || true)
+            if [ "$code" = "200" ] && grep -q '"status":"ready"' /tmp/readiness.json; then
+              ready=true
+              break
+            fi
+            echo "Readiness attempt $attempt returned HTTP $code; waiting for deploy/configuration..."
+            sleep 15
+          done
+          if [ "$ready" != "true" ]; then
+            cat /tmp/readiness.json
+            echo "Supabase-backed readiness did not pass. Check Render environment variables and deploy status."
+            exit 1
+          fi
+          questions_ready=false
+          for attempt in $(seq 1 12); do
+            code=$(curl -sS -o /tmp/questions.json -w '%{http_code}' "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0" || true)
+            if [ "$code" = "200" ] && grep -q '"questions"' /tmp/questions.json; then
+              questions_ready=true
+              break
+            fi
+            echo "Question API attempt $attempt returned HTTP $code; waiting for deploy/configuration..."
+            sleep 15
+          done
+          if [ "$questions_ready" != "true" ]; then
+            cat /tmp/questions.json
+            echo "Verified question service is not ready. Check SUPABASE_SERVICE_ROLE_KEY and database schema."
+            exit 1
+          fi
           if grep -q '"answer_key"' /tmp/questions.json; then
             echo "Security failure: question-list response exposed answer_key."
             exit 1
