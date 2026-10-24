@@ -695,7 +695,10 @@ function Metric({label,value,color}:{label:string,value:string,color:string}) {
 
 const s=StyleSheet.create({
   flex:{flex:1},safe:{flex:1,backgroundColor:C.bg},loadingScreen:{flex:1,alignItems:"center",justifyContent:"center",gap:14},
-  authPage:{paddingHorizontal:22,paddingTop:24,paddingBottom:24,flexGrow:1,justifyContent:"center"},\n  minimalAuth:{width:"100%",maxWidth:420,alignSelf:"center"},\n  authDivider:{flexDirection:"row",alignItems:"center",gap:10,marginVertical:16},authDividerLine:{flex:1,height:1,backgroundColor:C.border},authDividerText:{color:C.muted,fontSize:10,fontWeight:"700"},\n  googleButton:{alignItems:"center",justifyContent:"center",minHeight:48,borderRadius:12,borderWidth:1,borderColor:C.border,backgroundColor:C.panel2,paddingHorizontal:14},googleButtonText:{color:C.text,fontSize:14,fontWeight:"700"},
+  authPage:{paddingHorizontal:22,paddingTop:24,paddingBottom:24,flexGrow:1,justifyContent:"center"},
+  minimalAuth:{width:"100%",maxWidth:420,alignSelf:"center"},
+  authDivider:{flexDirection:"row",alignItems:"center",gap:10,marginVertical:16},authDividerLine:{flex:1,height:1,backgroundColor:C.border},authDividerText:{color:C.muted,fontSize:10,fontWeight:"700"},
+  googleButton:{alignItems:"center",justifyContent:"center",minHeight:48,borderRadius:12,borderWidth:1,borderColor:C.border,backgroundColor:C.panel2,paddingHorizontal:14},googleButtonText:{color:C.text,fontSize:14,fontWeight:"700"},
   brandBlock:{marginBottom:30},brand:{color:C.text,fontSize:24,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},
   authHero:{marginBottom:22},eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},authTitle:{color:C.text,fontSize:31,lineHeight:37,fontWeight:"800",letterSpacing:-.6,marginBottom:12},
   body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
