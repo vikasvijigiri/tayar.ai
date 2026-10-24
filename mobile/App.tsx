@@ -371,7 +371,7 @@ export default function App() {
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
               <View style={s.card}>
                 {!otpSent ? <>
-                  <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="continue"/>
+                  <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Continue</Text>}</TouchableOpacity>
                 </> : <>
                   <TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" placeholderTextColor="#71829D" keyboardType="number-pad" autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" accessibilityLabel="SMS verification code" style={s.input} editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
