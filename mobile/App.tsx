@@ -65,6 +65,8 @@ export default function App() {
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const otpLastSentAt = useRef(0);
+  const oauthProcessing = useRef(false);
+  const oauthHandledUrls = useRef<Set<string>>(new Set());
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -210,6 +212,59 @@ export default function App() {
     finally { setAuthLoading(false); }
   };
 
+  const handleOAuthCallback = async (url: string) => {
+    // Ignore unrelated deep links; process a callback URL only once even if both
+    // Linking and the browser auth session report the same redirect.
+    if (url.split(/[?#]/, 1)[0] !== "tayarai://auth/callback") return;
+    if (oauthHandledUrls.current.has(url)) return;
+    oauthHandledUrls.current.add(url);
+    if (oauthHandledUrls.current.size > 5) {
+      const oldest = oauthHandledUrls.current.values().next().value;
+      if (oldest) oauthHandledUrls.current.delete(oldest);
+    }
+
+    const params = Linking.parse(url).queryParams || {};
+    if (typeof params.error_description === "string" || typeof params.error === "string") {
+      await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+      setAuthError(true);
+      setAuthMessage("Google sign-in could not be completed.");
+      return;
+    }
+    const code = typeof params.code === "string" ? params.code : null;
+    if (!code || oauthProcessing.current) return;
+
+    oauthProcessing.current = true;
+    setAuthLoading(true);
+    try {
+      const savedVerifier = await SecureStore.getItemAsync("tayar_oauth_verifier");
+      await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+      if (!savedVerifier) throw new Error("Sign-in expired. Try again.");
+      await storeSession(await authRequest("token?grant_type=pkce", { auth_code: code, code_verifier: savedVerifier }));
+    } catch (error) {
+      setAuthError(true);
+      setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      oauthProcessing.current = false;
+      setAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void handleOAuthCallback(url);
+    });
+    void Linking.getInitialURL().then((url) => {
+      if (active && url) void handleOAuthCallback(url);
+    }).catch(() => {
+      // The browser callback may still arrive through the URL event listener.
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+
   const signInWithGoogle = async () => {
     setAuthMessage(""); setAuthError(false); setAuthLoading(true);
     try {
@@ -228,18 +283,19 @@ export default function App() {
       await SecureStore.setItemAsync("tayar_oauth_verifier", verifier);
       const authorize = cfg.url + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(redirectTo) + "&code_challenge=" + challenge + "&code_challenge_method=s256";
       const result = await WebBrowser.openAuthSessionAsync(authorize, redirectTo);
-      if (result.type === "cancel" || result.type === "dismiss") { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); return; }
+      if (result.type === "cancel" || result.type === "dismiss") {
+        await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+        return;
+      }
       if (result.type !== "success") throw new Error("Google sign-in was interrupted.");
-      const params = Linking.parse(result.url).queryParams || {};
-      const code = typeof params.code === "string" ? params.code : null;
-      if (typeof params.error_description === "string") throw new Error("Google sign-in could not be completed.");
-      if (!code) throw new Error("Google sign-in returned no authorization code.");
-      const savedVerifier = await SecureStore.getItemAsync("tayar_oauth_verifier");
+      await handleOAuthCallback(result.url);
+    } catch (error) {
       await SecureStore.deleteItemAsync("tayar_oauth_verifier");
-      if (!savedVerifier) throw new Error("Sign-in expired. Try again.");
-      await storeSession(await authRequest("token?grant_type=pkce", { auth_code: code, code_verifier: savedVerifier }));
-    } catch (error) { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed."); }
-    finally { setAuthLoading(false); }
+      setAuthError(true);
+      setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      if (!oauthProcessing.current) setAuthLoading(false);
+    }
   };
 
     const signOut = async () => {
