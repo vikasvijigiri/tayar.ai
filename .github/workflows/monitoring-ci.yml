@@ -57,6 +57,6 @@ jobs:
           print("Monitoring config valid: Prometheus scrape jobs, alert rules, Blackbox probes, Grafana provisioning and dashboard queries.")
       - name: Validate Prometheus syntax and alert expressions with promtool
         run: |
-          docker run --rm -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 promtool check config /etc/prometheus/prometheus.yml
-          docker run --rm -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 promtool check rules /etc/prometheus/alerts.yml
+          docker run --rm --entrypoint=/bin/promtool -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint=/bin/promtool -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 check rules /etc/prometheus/alerts.yml
           PY
