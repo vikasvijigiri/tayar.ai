@@ -277,6 +277,15 @@ async def get_hint(payload: HintIn, request: Request):
     raise HTTPException(status_code=503, detail="No AI provider configured.")
 
 
+class AuthCredentials(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class RefreshCredentials(BaseModel):
+    refresh_token: str = Field(min_length=10, max_length=4096)
+
+
 @app.post("/v1/auth/signup")
 async def auth_signup(payload: AuthCredentials):
     """Create a Supabase Auth account; confirmation requirements follow project settings."""
