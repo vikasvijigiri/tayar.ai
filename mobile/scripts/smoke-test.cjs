@@ -61,3 +61,13 @@ if (timerEffectIndex < 0 || !app.slice(timerEffectIndex, timerEffectIndex + 260)
 if (!app.includes('Linking.addEventListener("url"') || !app.includes("Linking.getInitialURL()") || !app.includes("oauthHandledUrls")) {
   throw new Error("OAuth must handle cold-start/resume deep links and deduplicate callbacks");
 }
+
+if (!app.includes("const authenticatedFetch") || !app.includes("refreshPromise.current")) {
+  throw new Error("Authenticated API calls must use single-flight refresh and retry");
+}
+if (!app.includes("answerRequestKeys.current.clear()") || !app.includes("hintCache.current.clear()") || !app.includes("setAttemptHistory([])")) {
+  throw new Error("Logout must clear all user-scoped in-memory data");
+}
+if (!app.includes("(testOffset + questions.length) % totalQuestionCount")) {
+  throw new Error("Load-more pagination must respect the active test offset");
+}
