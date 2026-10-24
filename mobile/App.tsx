@@ -293,6 +293,152 @@ export default function App() {
               </TouchableOpacity>
             </View>
             <ServiceStatus status={apiStatus}/>
+            <Text style={s.footer}>Your password is sent only to the authentication endpoint over HTTPS. Session tokens are stored using Android secure storage.</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+
+  const submitAnswer = async () => {
+    const question = questions[questionIndex];
+    if (!question || !selectedAnswer || !token || feedback) return;
+    if (remainingSeconds <= 0) {
+      setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
+      return;
+    }
+    setAnswerLoading(true);
+    setQuestionError("");
+    try {
+      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          answer_given: selectedAnswer,
+          elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 401) {
+          await signOut();
+          throw new Error("Your session expired. Please sign in again.");
+        }
+        throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
+      }
+      setFeedback(data as AnswerFeedback);
+      try {
+        const summaryResponse = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
+      } catch {
+        // Keep the last known summary if analytics are temporarily unavailable.
+      }
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+    } finally {
+      setAnswerLoading(false);
+    }
+  };
+
+  const requestHint = async () => {
+    const question = questions[questionIndex];
+    if (!question || !token || hintLoading || hint) return;
+    setHintLoading(true);
+    setQuestionError("");
+    try {
+      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
+      setHint(data.hint || "A verified hint is not available for this question yet.");
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+    } finally {
+      setHintLoading(false);
+    }
+  };
+
+  const loadMoreQuestions = async () => {
+    if (questionLoading) return;
+    if (remainingSeconds <= 0) {
+      setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
+      return;
+    }
+    setQuestionLoading(true);
+    setQuestionError("");
+    try {
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
+      const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
+      setQuestionStrategy(data.strategy || "baseline");
+      setFocusTopic(data.focus_topic || null);
+      if (next.length) {
+        setQuestions(current => [...current, ...next]);
+        setQuestionIndex(current => current + 1);
+      } else {
+        setQuestionError("You've reached the end of the currently published verified questions.");
+      }
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
+    } finally {
+      setQuestionLoading(false);
+    }
+  };
+
+  const startNewTest = async () => {
+    if (!token || questionLoading) return;
+    setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
+    try {
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
+      setQuestions(Array.isArray(data.questions) ? data.questions : []); setQuestionIndex(0);
+      setQuestionStrategy(data.strategy || "baseline"); setFocusTopic(data.focus_topic || null);
+      setSelectedAnswer(""); setFeedback(null); setHint(""); sessionDeadline.current = Date.now() + 480000;
+      setRemainingSeconds(480); questionStartedAt.current = Date.now();
+    } catch (error) { setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
+    finally { setQuestionLoading(false); }
+  };
+
+  const checkService = async (key: string, path: string) => {
+    setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
+    try {
+      const response = await apiFetch(API_BASE_URL + path, {}, 12000);
+      const ok = response.ok;
+      const notReady = path === "/health/ready" && response.status === 503;
+      setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
+      if (key === "health") setApiStatus(response.ok ? "online" : "offline");
+    } catch {
+      setServiceChecks(current => ({ ...current, [key]: { status: "attention", detail: "No response · check network or backend availability" } }));
+      if (key === "health") setApiStatus("offline");
+    }
+  };
+
+  const checkAllServices = async () => {
+    setServiceCheckLoading(true);
+    await Promise.all([checkService("health","/health"),checkService("ready","/health/ready"),checkService("config","/v1/config"),checkService("metrics","/metrics")]);
+    setServiceCheckLoading(false);
+  };
+
+  const timerLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+  const lastFiveAccuracy = summary?.last_5_accuracy_pct == null ? "—" : String(summary.last_5_accuracy_pct) + "%";
+  const overallAccuracy = summary?.overall_accuracy_pct == null ? "—" : String(summary.overall_accuracy_pct) + "%";
+  return (
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
+      <ScrollView contentContainerStyle={s.page}>
+        <View style={s.top}>
+          <View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View>
+          <TouchableOpacity onPress={signOut} style={s.avatar}><Text style={{color:C.teal,fontWeight:"800"}}>OUT</Text></TouchableOpacity>
+        </View>
+        <ServiceStatus status={apiStatus}/>
         <View style={s.navigation}>{(["Home","Practice","Analytics","Revision","Services"] as AppScreen[]).map(item=><TouchableOpacity key={item} accessibilityRole="button" accessibilityState={{selected:screen===item}} onPress={() => setScreen(item)} style={[s.navigationItem,screen===item&&s.navigationActive]}><Text style={[s.navigationText,screen===item&&s.navigationTextActive]}>{item}</Text></TouchableOpacity>)}</View>
         {screen === "Home" && <>
         <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text>
