@@ -1,0 +1,42 @@
+groups:
+  - name: tayar-ai-api
+    interval: 30s
+    rules:
+      - alert: TayarApiTargetDown
+        expr: up{job="tayar-ai-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: tayar-ai-api
+        annotations:
+          summary: Tayar.ai API metrics endpoint is unreachable
+          description: Prometheus has failed to scrape the production API metrics endpoint for at least two minutes.
+
+      - alert: TayarApiHigh5xxRate
+        expr: |
+          (
+            sum(rate(tayar_http_requests_total{job="tayar-ai-api",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(tayar_http_requests_total{job="tayar-ai-api"}[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: tayar-ai-api
+        annotations:
+          summary: Tayar.ai API server error rate exceeds 5%
+          description: More than 5% of observed requests have returned 5xx responses for five minutes.
+
+      - alert: TayarApiHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(tayar_http_request_duration_seconds_bucket{job="tayar-ai-api"}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: tayar-ai-api
+        annotations:
+          summary: Tayar.ai API p95 latency exceeds one second
+          description: The production API 95th percentile request latency has exceeded one second for ten minutes.
