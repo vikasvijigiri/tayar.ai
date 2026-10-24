@@ -388,7 +388,7 @@ export default function App() {
           <Text style={s.cardTitle}>Topic mastery</Text>
           {summary?.topic_performance?.length ? summary.topic_performance.slice(0,8).map(topic=><View key={topic.slug} style={s.topicRow}>
             <View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View>
-            <View style={s.topicTrack}><View style={[s.topicFill,{width:String(Math.max(0,Math.min(100,topic.accuracy_pct)))+"%"}]}/></View>
+            <View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View>
             <Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average</Text>
           </View>) : <Text style={s.body}>Topic mastery appears after verified questions have been answered and saved.</Text>}
           {summary?.weakest_topic&&<Text style={[s.body,{marginTop:12}]}>Focus next: {summary.weakest_topic.topic} ({summary.weakest_topic.accuracy_pct}% across {summary.weakest_topic.attempts} attempts).</Text>}
@@ -404,6 +404,10 @@ export default function App() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function percentWidth(value:number): `${number}%` {
+  return `${Math.max(0, Math.min(100, value))}%`;
 }
 
 function ServiceStatus({status}:{status:ApiStatus}) {
