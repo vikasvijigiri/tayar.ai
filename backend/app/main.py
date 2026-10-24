@@ -1,10 +1,11 @@
+import logging
 import os
 from time import perf_counter
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -48,15 +49,38 @@ AI_PROVIDER_LATENCY = Histogram(
 )
 
 
+logger = logging.getLogger("tayar.api")
+
+
 @app.middleware("http")
 async def observe_requests(request: Request, call_next):
     started = perf_counter()
+    try:
+        request_id = str(UUID(request.headers.get("X-Request-ID", "")))
+    except (ValueError, AttributeError):
+        request_id = str(uuid4())
+    request.state.request_id = request_id
+
     response = await call_next(request)
+    duration = perf_counter() - started
     route_obj = request.scope.get("route")
     route = getattr(route_obj, "path", "unmatched")
+
     if route != "/metrics":
         REQUEST_COUNT.labels(request.method, route, str(response.status_code)).inc()
-        REQUEST_LATENCY.labels(request.method, route).observe(perf_counter() - started)
+        REQUEST_LATENCY.labels(request.method, route).observe(duration)
+
+    response.headers["X-Request-ID"] = request_id
+    # Cache only non-sensitive, stable configuration. User-specific content and writes
+    # must never be stored by shared proxies or intermediary caches.
+    if route == "/v1/config":
+        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
+    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
+        response.headers["Cache-Control"] = "private, no-store"
+    logger.info(
+        "request_id=%s method=%s route=%s status=%s duration_ms=%.2f",
+        request_id, request.method, route, response.status_code, duration * 1000,
+    )
     return response
 
 
@@ -444,7 +468,8 @@ async def list_verified_questions(
                         "user_id": f"eq.{user_id}",
                     "questions.exam_id": f"eq.{exam_id}",
                         "order": "created_at.desc",
-                        "limit": "1000",
+                        # Bound adaptive history reads; recent performance drives the current practice strategy.
+                        "limit": "200",
                     },
                     headers=admin_headers,
                 )
@@ -544,12 +569,23 @@ async def list_verified_questions(
 
 
 @app.post("/v1/questions/{question_id}/answer")
-async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn, request: Request):
+async def answer_verified_question(
+    question_id: UUID,
+    payload: QuestionAnswerIn,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
     """Grade on the server and save an attempt; answer keys never come from the client."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(status_code=401, detail="Bearer access token required.")
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Idempotency-Key header is required.")
+    try:
+        idempotency_key = str(UUID(idempotency_key))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Idempotency-Key must be a UUID.") from exc
 
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
@@ -587,12 +623,19 @@ async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn,
             question = matches[0]
             is_correct = payload.answer_given == str(question["answer_key"])
 
+            # Ignore duplicate keys so a client retry cannot create a second attempt.
             attempt_response = await client.post(
                 f"{base_url}/rest/v1/attempts",
-                headers={**user_headers, "Content-Type": "application/json", "Prefer": "return=minimal"},
+                params={"on_conflict": "user_id,idempotency_key"},
+                headers={
+                    **user_headers,
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=ignore-duplicates,return=representation",
+                },
                 json={
                     "user_id": user_id,
                     "question_id": question_id,
+                    "idempotency_key": str(idempotency_key),
                     "is_correct": is_correct,
                     "elapsed_ms": payload.elapsed_ms,
                     "confidence": payload.confidence,
@@ -602,6 +645,24 @@ async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn,
             if attempt_response.status_code in (401, 403):
                 raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
             attempt_response.raise_for_status()
+            saved_rows = attempt_response.json() if attempt_response.content else []
+            if not saved_rows:
+                # A concurrent duplicate request may have won the insert; return its saved result.
+                existing_response = await client.get(
+                    f"{base_url}/rest/v1/attempts",
+                    params={
+                        "select": "idempotency_key,is_correct,answer_given",
+                        "user_id": f"eq.{user_id}",
+                        "idempotency_key": f"eq.{idempotency_key}",
+                        "limit": "1",
+                    },
+                    headers=user_headers,
+                )
+                existing_response.raise_for_status()
+                saved_rows = existing_response.json()
+                if not saved_rows:
+                    raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
+                is_correct = bool(saved_rows[0]["is_correct"])
     except HTTPException:
         raise
     except httpx.HTTPStatusError:

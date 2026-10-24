@@ -8,6 +8,7 @@ on:
       - "backend/supabase/schema.sql"
       - "render.yaml"
       - ".github/workflows/deployed-api-smoke.yml"
+      - ".github/workflows/quality-gates.yml"
   workflow_dispatch:
 permissions:
   contents: read
