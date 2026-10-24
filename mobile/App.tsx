@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -23,6 +23,9 @@ const C = {
 
 type ApiStatus = "checking" | "online" | "offline";
 type AuthMode = "signin" | "signup";
+type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
+type Question = { id: string; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
+type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
 
 export default function App() {
   const [tab, setTab] = useState("Today");
@@ -35,6 +38,14 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionLoading, setQuestionLoading] = useState(false);
+  const [questionError, setQuestionError] = useState("");
+  const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [answerLoading, setAnswerLoading] = useState(false);
+  const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
+  const questionStartedAt = useRef(Date.now());
 
   useEffect(() => {
     let active = true;
@@ -182,6 +193,89 @@ export default function App() {
     );
   }
 
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    const loadQuestions = async () => {
+      setQuestionLoading(true);
+      setQuestionError("");
+      try {
+        const response = await fetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0");
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
+        if (active) {
+          setQuestions(Array.isArray(data.questions) ? data.questions : []);
+          setQuestionIndex(0);
+        }
+      } catch (error) {
+        if (active) setQuestionError(error instanceof Error ? error.message : "Unable to load verified questions.");
+      } finally {
+        if (active) setQuestionLoading(false);
+      }
+    };
+    loadQuestions();
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
+    setSelectedAnswer("");
+    setFeedback(null);
+    questionStartedAt.current = Date.now();
+  }, [questionIndex]);
+
+  const submitAnswer = async () => {
+    const question = questions[questionIndex];
+    if (!question || !selectedAnswer || !token || feedback) return;
+    setAnswerLoading(true);
+    setQuestionError("");
+    try {
+      const response = await fetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          answer_given: selectedAnswer,
+          elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 401) {
+          await signOut();
+          throw new Error("Your session expired. Please sign in again.");
+        }
+        throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
+      }
+      setFeedback(data as AnswerFeedback);
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+    } finally {
+      setAnswerLoading(false);
+    }
+  };
+
+  const loadMoreQuestions = async () => {
+    if (questionLoading) return;
+    setQuestionLoading(true);
+    setQuestionError("");
+    try {
+      const response = await fetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length);
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
+      const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
+      if (next.length) {
+        setQuestions(current => [...current, ...next]);
+        setQuestionIndex(current => current + 1);
+      } else {
+        setQuestionError("You've reached the end of the currently published verified questions.");
+      }
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
+    } finally {
+      setQuestionLoading(false);
+    }
+  };
+
   const lastFiveAccuracy = "—";
   const overallAccuracy = "—";
   return (
@@ -207,7 +301,35 @@ export default function App() {
         <Text style={s.section}>Your next best action</Text>
         <View style={s.card}><Text style={s.cardTitle}>Establish your baseline</Text><Text style={s.body}>A short diagnostic identifies topics needing attention first. Practice will use verified source material only.</Text></View>
         <Text style={s.section}>Practice workspace</Text>
-        <View style={s.card}><Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text><Text style={s.cardTitle}>Your verified question bank is being prepared.</Text><Text style={s.body}>No invented exam questions or answer keys. Each question will have source references, topic tags, verified answers and reusable solution steps.</Text><View style={s.disabled}><Text style={s.small}>Practice unlocks after content verification</Text></View></View>
+        <View style={s.card}>
+          <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
+          {questionLoading && questions.length === 0 ? <ActivityIndicator color={C.teal} style={{marginTop:18}}/> :
+            questionError && questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>{questionError}</Text> :
+            questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>No verified active questions are published yet. This workspace will only show questions verified against the uploaded railway PDFs.</Text> :
+            <>
+              <Text style={s.small}>QUESTION {questionIndex + 1} OF {questions.length}</Text>
+              <Text style={s.cardTitle}>{questions[questionIndex].question_text}</Text>
+              {(questions[questionIndex].options || []).map((option, idx) => {
+                const raw = typeof option === "string" ? option : (option.text || option.value || option.label || option.key || "");
+                const match = typeof option === "string" ? option.match(/^\s*([A-Za-z0-9]+)[.)：:]?\s*/) : null;
+                const key = typeof option === "string" ? ((match || [])[1] || raw) : (option.key || option.label || String.fromCharCode(65 + idx));
+                return <TouchableOpacity key={idx} disabled={!!feedback || answerLoading} onPress={() => setSelectedAnswer(key)} style={[s.option,selectedAnswer===key&&s.optionSelected]}>
+                  <Text style={[s.optionText,selectedAnswer===key&&s.optionTextSelected]}>{raw}</Text>
+                </TouchableOpacity>;
+              })}
+              {feedback && <View style={[s.feedback,{borderColor:feedback.is_correct?C.teal:C.red}]}>
+                <Text style={[s.feedbackTitle,{color:feedback.is_correct?C.teal:C.red}]}>{feedback.is_correct?"Correct answer":"Not quite — review the method"}</Text>
+                <Text style={s.body}>Answer: {feedback.answer_key}</Text>
+                {feedback.solution_steps?.map((step,i)=><Text key={i} style={s.body}>{i+1}. {step}</Text>)}
+                <Text style={s.small}>Source: {feedback.source_document}{feedback.source_page?" · page "+feedback.source_page:""}</Text>
+              </View>}
+              {questionError!==""&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
+              {!feedback ? <TouchableOpacity disabled={!selectedAnswer||answerLoading} onPress={submitAnswer} style={[s.primaryButton,(!selectedAnswer||answerLoading)&&s.dimmed]}>{answerLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Submit answer</Text>}</TouchableOpacity> :
+                <TouchableOpacity onPress={questionIndex+1<questions.length?()=>setQuestionIndex(i=>i+1):loadMoreQuestions} disabled={questionLoading} style={s.primaryButton}>{questionLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>{questionIndex+1<questions.length?"Next question":"Load more questions"}</Text>}</TouchableOpacity>}
+            </>
+          }
+          {questionError!==""&&questions.length===0&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
+        </View>
         <View style={s.nav}>{["Today","Topics","Progress"].map(x=><TouchableOpacity key={x} onPress={()=>setTab(x)} style={[s.navItem,tab===x&&s.active]}><Text style={{color:tab===x?C.teal:C.muted,fontWeight:"700"}}>{x}</Text></TouchableOpacity>)}</View>
         {tab!=="Today"&&<View style={s.card}><Text style={s.cardTitle}>{tab==="Topics"?"Topic mastery":"Progress history"}</Text><Text style={s.body}>This view will populate from verified question attempts. No performance is fabricated.</Text></View>}
         <Text style={s.footer}>Built for consistency, not empty streaks · v0.1.0</Text>
@@ -231,6 +353,7 @@ const s=StyleSheet.create({
   body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
   input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
+  option:{padding:13,borderRadius:12,borderWidth:1,borderColor:C.border,marginTop:9,backgroundColor:C.bg},optionSelected:{borderColor:C.teal,backgroundColor:"#173C3D"},optionText:{color:C.muted,fontSize:13,lineHeight:19},optionTextSelected:{color:C.text,fontWeight:"700"},feedback:{borderWidth:1,borderRadius:12,padding:13,marginTop:14,gap:6},feedbackTitle:{fontSize:13,fontWeight:"800",marginBottom:4},
   authMessage:{fontSize:12,lineHeight:18,marginTop:12},primaryButton:{backgroundColor:C.teal,borderRadius:13,paddingVertical:14,alignItems:"center",justifyContent:"center",marginTop:18,minHeight:48},primaryButtonText:{color:C.bg,fontWeight:"900",fontSize:14},dimmed:{opacity:.65},
   modeSwitch:{paddingVertical:15,alignItems:"center"},modeText:{color:C.blue,fontSize:12,fontWeight:"700"},statusRow:{flexDirection:"row",alignItems:"center",marginBottom:16},statusDot:{width:7,height:7,borderRadius:4,marginRight:8},statusText:{color:C.muted,fontSize:11},
   page:{paddingHorizontal:20,paddingTop:18,paddingBottom:30},top:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:20},
