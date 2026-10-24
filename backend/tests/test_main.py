@@ -529,3 +529,49 @@ def test_question_list_adapts_to_weak_topic_without_exposing_answer_key(monkeypa
     assert body["focus_topic"]["slug"] == "algebra"
     assert requested_question_params["topic_id"] == "eq.topic-1"
     assert "answer_key" not in body["questions"][0]
+
+
+def test_attempt_summary_filters_history_to_selected_exam(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            assert url.endswith("/rest/v1/attempts")
+            assert params["user_id"] == "eq.user-123"
+            assert params["questions.exam_id"] == "eq.rrb_ntpc"
+            assert "questions!inner(exam_id" in params["select"]
+            return FakeResponse([])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get(
+        "/v1/attempts/summary?exam_id=rrb_ntpc",
+        headers={"Authorization": "Bearer test-user-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["exam_id"] == "rrb_ntpc"
+    assert response.json()["total_attempts"] == 0
