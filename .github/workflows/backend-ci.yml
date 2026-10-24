@@ -25,6 +25,10 @@ jobs:
       - run: ruff check app tests
       - run: PYTHONPATH=. pytest -q --cov=app --cov-report=term-missing
       - name: Run bounded local API concurrency smoke test
+        env:
+          LOAD_WORKERS: "20"
+          LOAD_REQUESTS_PER_WORKER: "50"
+          LOAD_P95_LIMIT_SECONDS: "2.0"
         run: python scripts/load_smoke.py
       - name: Validate Supabase schema and starter seed in PostgreSQL
         run: |
