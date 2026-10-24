@@ -445,3 +445,87 @@ def test_readiness_fails_closed_when_supabase_is_unreachable(monkeypatch):
     response = client.get("/health/ready")
     assert response.status_code == 503
     assert response.json()["detail"]["dependencies"]["supabase"] == "unreachable"
+
+
+def test_question_strategy_uses_weak_topic_only_when_a_full_set_exists():
+    weakest = {"slug": "algebra", "topic": "Algebra", "attempts": 3, "accuracy_pct": 33.3}
+    assert main.choose_question_strategy(weakest, 10, 10) == (
+        "weak_topic_focus", "sufficient_verified_topic_coverage"
+    )
+    assert main.choose_question_strategy(weakest, 9, 10) == (
+        "mixed_baseline", "insufficient_verified_questions_for_full_set"
+    )
+    assert main.choose_question_strategy(None, 20, 10) == (
+        "baseline", "baseline_not_established"
+    )
+
+
+def test_question_list_adapts_to_weak_topic_without_exposing_answer_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    history = [
+        {"question_id": "q1", "is_correct": False, "elapsed_ms": 10000,
+         "questions": {"topic_id": "topic-1", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q2", "is_correct": False, "elapsed_ms": 11000,
+         "questions": {"topic_id": "topic-1", "topics": {"name": "Algebra", "slug": "algebra"}}},
+        {"question_id": "q3", "is_correct": True, "elapsed_ms": 9000,
+         "questions": {"topic_id": "topic-1", "topics": {"name": "Algebra", "slug": "algebra"}}},
+    ]
+    requested_question_params = {}
+
+    class FakeResponse:
+        def __init__(self, payload, status_code=200, headers=None):
+            self.payload = payload
+            self.status_code = status_code
+            self.headers = headers or {}
+
+        def json(self):
+            return self.payload
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise main.httpx.HTTPStatusError("fake error", request=None, response=None)
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            if url.endswith("/rest/v1/attempts"):
+                assert params["user_id"] == "eq.user-123"
+                return FakeResponse(history)
+            if url.endswith("/rest/v1/topics"):
+                assert params["slug"] == "eq.algebra"
+                return FakeResponse([{"id": "topic-1"}])
+            if url.endswith("/rest/v1/questions") and headers.get("Prefer") == "count=exact":
+                return FakeResponse([{"id": "q1"}], headers={"content-range": "0-0/12"})
+            if url.endswith("/rest/v1/questions"):
+                requested_question_params.update(params)
+                return FakeResponse([{
+                    "id": "q4", "exam_id": "rrb_ntpc", "topic_id": "topic-1",
+                    "question_text": "An Algebra question?", "options": ["A) 1", "B) 2", "C) 3", "D) 4"],
+                    "answer_key": "B", "source_document": "verified.pdf", "source_page": "4",
+                }])
+            raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get(
+        "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0",
+        headers={"Authorization": "Bearer test-user-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["strategy"] == "weak_topic_focus"
+    assert body["focus_topic"]["slug"] == "algebra"
+    assert requested_question_params["topic_id"] == "eq.topic-1"
+    assert "answer_key" not in body["questions"][0]
