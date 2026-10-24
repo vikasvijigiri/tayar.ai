@@ -1,6 +1,10 @@
 const fs = require('fs');
 const app = fs.readFileSync('App.tsx', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const authGateIndex = app.indexOf('  if (!token) {');
+if (authGateIndex < 0 || app.lastIndexOf('useEffect(') > authGateIndex) {
+  throw new Error('React hooks must be declared before conditional auth rendering');
+}
 if (!app.includes('lastFiveAccuracy')) throw new Error('Missing recent accuracy metric');
 if (!app.includes('SOURCE-VERIFIED')) throw new Error('Missing source integrity guard');
 if (!app.includes('https://tayar-ai-api.onrender.com')) throw new Error('Missing configured API base URL');
