@@ -44,3 +44,34 @@ if (!app.includes('authRequest("otp"') || !app.includes('type: "sms"')) throw ne
 if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PASSWORD")) throw new Error("Email/password login must not be shown");
 if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
+
+if (!app.includes("Crypto.CryptoEncoding.BASE64") || !app.includes("raw 32-byte SHA-256 digest as base64url")) {
+  throw new Error("PKCE S256 challenge must base64url-encode the raw SHA-256 digest, not hex text");
+}
+if (app.includes("digestHex.match") || app.includes("btoa(String.fromCharCode(...digestBytes))")) {
+  throw new Error("Invalid PKCE hex-to-byte conversion remains");
+}
+console.log("PKCE S256 digest encoding guard passed");
+
+const timerEffectIndex = app.indexOf("// Do not consume practice time");
+if (timerEffectIndex < 0 || !app.slice(timerEffectIndex, timerEffectIndex + 260).includes('screen !== "Practice"')) {
+  throw new Error("Eight-minute timer must start only on the Practice screen");
+}
+
+if (!app.includes('Linking.addEventListener("url"') || !app.includes("Linking.getInitialURL()") || !app.includes("oauthHandledUrls")) {
+  throw new Error("OAuth must handle cold-start/resume deep links and deduplicate callbacks");
+}
+
+if (!app.includes("const authenticatedFetch") || !app.includes("refreshPromise.current")) {
+  throw new Error("Authenticated API calls must use single-flight refresh and retry");
+}
+if (!app.includes("answerRequestKeys.current.clear()") || !app.includes("hintCache.current.clear()") || !app.includes("setAttemptHistory([])")) {
+  throw new Error("Logout must clear all user-scoped in-memory data");
+}
+if (!app.includes("(testOffset + questions.length) % totalQuestionCount")) {
+  throw new Error("Load-more pagination must respect the active test offset");
+}
+
+if (!app.includes('if (signOutPromise.current) return { status: "invalid" }') || !app.includes("Sign-out is still finishing")) {
+  throw new Error("Token refresh/session persistence must not race with logout");
+}

@@ -45,6 +45,7 @@ const C = {
 };
 
 type ApiStatus = "checking" | "online" | "offline";
+type RefreshOutcome = { status: "ok"; accessToken: string } | { status: "invalid" } | { status: "unavailable" };
 type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
@@ -65,6 +66,11 @@ export default function App() {
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const otpLastSentAt = useRef(0);
+  const oauthProcessing = useRef(false);
+  const signOutPromise = useRef<Promise<void> | null>(null);
+  const refreshPromise = useRef<Promise<RefreshOutcome> | null>(null);
+  const sessionGeneration = useRef(0);
+  const oauthHandledUrls = useRef<Set<string>>(new Set());
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -100,7 +106,10 @@ export default function App() {
           SecureStore.getItemAsync("tayar_access_token"),
           SecureStore.getItemAsync("tayar_refresh_token"),
         ]);
-        if (!savedAccess) return;
+        if (!savedAccess) {
+          if (savedRefresh) await SecureStore.deleteItemAsync("tayar_refresh_token");
+          return;
+        }
         if (savedRefresh) {
           try {
             const response = await apiFetch(`${API_BASE_URL}/v1/auth/refresh`, {
@@ -176,13 +185,22 @@ export default function App() {
   };
 
   const storeSession = async (data: { access_token?: unknown; refresh_token?: unknown }) => {
+    if (signOutPromise.current) throw new Error("Sign-out is still finishing. Try again.");
     if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") throw new Error("Sign-in did not return a valid session.");
+    const generation = ++sessionGeneration.current;
+    const pendingRefresh = refreshPromise.current;
+    if (pendingRefresh) await pendingRefresh;
+    if (generation !== sessionGeneration.current) return;
     try {
       await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+      if (generation !== sessionGeneration.current) return;
       await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+      if (generation !== sessionGeneration.current) return;
     } catch (error) {
-      await SecureStore.deleteItemAsync("tayar_access_token");
-      await SecureStore.deleteItemAsync("tayar_refresh_token");
+      await Promise.allSettled([
+        SecureStore.deleteItemAsync("tayar_access_token"),
+        SecureStore.deleteItemAsync("tayar_refresh_token"),
+      ]);
       throw error;
     }
     setToken(data.access_token); setAuthMessage(""); setAuthError(false); setOtp("");
@@ -210,6 +228,59 @@ export default function App() {
     finally { setAuthLoading(false); }
   };
 
+  const handleOAuthCallback = async (url: string) => {
+    // Ignore unrelated deep links; process a callback URL only once even if both
+    // Linking and the browser auth session report the same redirect.
+    if (url.split(/[?#]/, 1)[0] !== "tayarai://auth/callback") return;
+    if (oauthHandledUrls.current.has(url)) return;
+    oauthHandledUrls.current.add(url);
+    if (oauthHandledUrls.current.size > 5) {
+      const oldest = oauthHandledUrls.current.values().next().value;
+      if (oldest) oauthHandledUrls.current.delete(oldest);
+    }
+
+    const params = Linking.parse(url).queryParams || {};
+    if (typeof params.error_description === "string" || typeof params.error === "string") {
+      await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+      setAuthError(true);
+      setAuthMessage("Google sign-in could not be completed.");
+      return;
+    }
+    const code = typeof params.code === "string" ? params.code : null;
+    if (!code || oauthProcessing.current) return;
+
+    oauthProcessing.current = true;
+    setAuthLoading(true);
+    try {
+      const savedVerifier = await SecureStore.getItemAsync("tayar_oauth_verifier");
+      await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+      if (!savedVerifier) throw new Error("Sign-in expired. Try again.");
+      await storeSession(await authRequest("token?grant_type=pkce", { auth_code: code, code_verifier: savedVerifier }));
+    } catch (error) {
+      setAuthError(true);
+      setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      oauthProcessing.current = false;
+      setAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void handleOAuthCallback(url);
+    });
+    void Linking.getInitialURL().then((url) => {
+      if (active && url) void handleOAuthCallback(url);
+    }).catch(() => {
+      // The browser callback may still arrive through the URL event listener.
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+
   const signInWithGoogle = async () => {
     setAuthMessage(""); setAuthError(false); setAuthLoading(true);
     try {
@@ -217,40 +288,155 @@ export default function App() {
       const redirectTo = Linking.createURL("auth/callback");
       const random = await Crypto.getRandomBytesAsync(32);
       const verifier = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
-      const digestHex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier);
-      const digestBytes = (digestHex.match(/.{2}/g) || []).map((part) => parseInt(part, 16));
-      const challenge = btoa(String.fromCharCode(...digestBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      // PKCE S256 encodes the raw 32-byte SHA-256 digest as base64url.
+      // Do not base64-encode the hexadecimal text representation of the digest.
+      const digestBase64 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        verifier,
+        { encoding: Crypto.CryptoEncoding.BASE64 },
+      );
+      const challenge = digestBase64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
       await SecureStore.setItemAsync("tayar_oauth_verifier", verifier);
       const authorize = cfg.url + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(redirectTo) + "&code_challenge=" + challenge + "&code_challenge_method=s256";
       const result = await WebBrowser.openAuthSessionAsync(authorize, redirectTo);
-      if (result.type === "cancel" || result.type === "dismiss") { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); return; }
+      if (result.type === "cancel" || result.type === "dismiss") {
+        await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+        return;
+      }
       if (result.type !== "success") throw new Error("Google sign-in was interrupted.");
-      const params = Linking.parse(result.url).queryParams || {};
-      const code = typeof params.code === "string" ? params.code : null;
-      if (typeof params.error_description === "string") throw new Error("Google sign-in could not be completed.");
-      if (!code) throw new Error("Google sign-in returned no authorization code.");
-      const savedVerifier = await SecureStore.getItemAsync("tayar_oauth_verifier");
+      await handleOAuthCallback(result.url);
+    } catch (error) {
       await SecureStore.deleteItemAsync("tayar_oauth_verifier");
-      if (!savedVerifier) throw new Error("Sign-in expired. Try again.");
-      await storeSession(await authRequest("token?grant_type=pkce", { auth_code: code, code_verifier: savedVerifier }));
-    } catch (error) { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed."); }
-    finally { setAuthLoading(false); }
+      setAuthError(true);
+      setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      if (!oauthProcessing.current) setAuthLoading(false);
+    }
   };
 
     const signOut = async () => {
-    const access = await SecureStore.getItemAsync("tayar_access_token");
-    if (access) {
-      try {
-        const cfg = await authConfig();
-        await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
-      } catch { /* Local logout still succeeds during provider outages. */ }
+    if (signOutPromise.current) {
+      await signOutPromise.current;
+      return;
     }
-    await SecureStore.deleteItemAsync("tayar_access_token");
-    await SecureStore.deleteItemAsync("tayar_refresh_token");
-    await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+    ++sessionGeneration.current;
+    const inFlightRefresh = refreshPromise.current;
+    // Immediately hide the signed-in UI and clear in-memory user data.
     setToken(null);
+    setAuthLoading(true);
+    answerRequestKeys.current.clear();
+    hintCache.current.clear();
+    sessionDeadline.current = null;
+    setQuestions([]);
+    setQuestionIndex(0);
+    setTotalQuestionCount(0);
+    setTestOffset(0);
+    setCurrentTestSize(0);
+    setSelectedAnswer("");
+    setFeedback(null);
+    setHint("");
+    setSummary(null);
+    setAttemptHistory([]);
+    setQuestionError("");
     setAuthMessage("");
     setAuthError(false);
+    setOtp("");
+    setOtpSent(false);
+    setRemainingSeconds(480);
+    setQuestionLoading(false);
+    setAnswerLoading(false);
+    setHintLoading(false);
+    setHistoryLoading(false);
+    setServiceChecks({});
+    setScreen("Home");
+
+    const task = (async () => {
+      if (inFlightRefresh) await inFlightRefresh;
+      let access: string | null = null;
+      try { access = await SecureStore.getItemAsync("tayar_access_token"); } catch { /* Continue with local cleanup. */ }
+      if (access) {
+        try {
+          const cfg = await authConfig();
+          await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
+        } catch { /* Local logout still succeeds during provider outages. */ }
+      }
+      await Promise.allSettled([
+        SecureStore.deleteItemAsync("tayar_access_token"),
+        SecureStore.deleteItemAsync("tayar_refresh_token"),
+        SecureStore.deleteItemAsync("tayar_oauth_verifier"),
+      ]);
+      setAuthLoading(false);
+    })();
+    signOutPromise.current = task;
+    try { await task; }
+    finally { if (signOutPromise.current === task) signOutPromise.current = null; }
+  };
+
+  const refreshAccessToken = async (): Promise<RefreshOutcome> => {
+    if (signOutPromise.current) return { status: "invalid" };
+    if (refreshPromise.current) return refreshPromise.current;
+    const generation = sessionGeneration.current;
+    const task = (async (): Promise<RefreshOutcome> => {
+      try {
+        const refresh = await SecureStore.getItemAsync("tayar_refresh_token");
+        if (!refresh) return { status: "invalid" };
+        const response = await apiFetch(API_BASE_URL + "/v1/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refresh }),
+        }, 12000);
+        if (response.status === 400 || response.status === 401) return { status: "invalid" };
+        if (!response.ok) return { status: "unavailable" };
+        const data = await response.json().catch(() => null);
+        if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") {
+          return { status: "unavailable" };
+        }
+        if (generation !== sessionGeneration.current) return { status: "invalid" };
+        try {
+          await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+          if (generation !== sessionGeneration.current) return { status: "invalid" };
+          await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+          if (generation !== sessionGeneration.current) return { status: "invalid" };
+        } catch {
+          await Promise.allSettled([
+            SecureStore.deleteItemAsync("tayar_access_token"),
+            SecureStore.deleteItemAsync("tayar_refresh_token"),
+          ]);
+          return { status: "invalid" };
+        }
+        setToken(data.access_token);
+        return { status: "ok", accessToken: data.access_token };
+      } catch {
+        return { status: "unavailable" };
+      }
+    })();
+    refreshPromise.current = task;
+    try { return await task; }
+    finally { if (refreshPromise.current === task) refreshPromise.current = null; }
+  };
+
+  const authenticatedFetch = async (
+    url: string,
+    init: Parameters<typeof fetch>[1] = {},
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> => {
+    const originalHeaders = new Headers(init.headers);
+    const authorization = originalHeaders.get("Authorization") || "";
+    const response = await apiFetch(url, init, timeoutMs);
+    if (response.status !== 401 || !/^Bearer\s+/i.test(authorization)) return response;
+
+    const refreshed = await refreshAccessToken();
+    if (refreshed.status === "invalid") {
+      await signOut();
+      return response;
+    }
+    if (refreshed.status !== "ok") return response;
+
+    const retryHeaders = new Headers(init.headers);
+    retryHeaders.set("Authorization", "Bearer " + refreshed.accessToken);
+    const retried = await apiFetch(url, { ...init, headers: retryHeaders }, timeoutMs);
+    if (retried.status === 401) await signOut();
+    return retried;
   };
 
   useEffect(() => {
@@ -260,7 +446,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -287,7 +473,7 @@ export default function App() {
     let active = true;
     const loadSummary = async () => {
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
@@ -307,7 +493,7 @@ export default function App() {
     const loadHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt history is not available.");
@@ -329,7 +515,8 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!token || questions.length === 0) return;
+    // Do not consume practice time on Home, Analytics, Revision or Services.
+    if (!token || screen !== "Practice" || questions.length === 0) return;
     if (sessionDeadline.current === null) {
       sessionDeadline.current = Date.now() + 8 * 60 * 1000;
       setRemainingSeconds(480);
@@ -343,7 +530,7 @@ export default function App() {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [token, questions.length]);
+  }, [token, questions.length, screen]);
 
   useEffect(() => {
     setSelectedAnswer("");
@@ -402,7 +589,7 @@ export default function App() {
         idempotencyKey = createIdempotencyKey();
         answerRequestKeys.current.set(question.id, idempotencyKey);
       }
-      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -417,8 +604,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          throw new Error("Session expired or temporarily unavailable. Please retry.");
         }
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
@@ -427,10 +613,10 @@ export default function App() {
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
         const [summaryResponse, historyResponse] = await Promise.all([
-          apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
             headers: { Authorization: "Bearer " + token },
           }),
-          apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
@@ -461,7 +647,7 @@ export default function App() {
     setHintLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/ai/hint", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
@@ -487,7 +673,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + (totalQuestionCount > 0 ? (testOffset + questions.length) % totalQuestionCount : questions.length), { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
@@ -512,7 +698,7 @@ export default function App() {
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
@@ -530,7 +716,9 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
+      const response = token
+        ? await authenticatedFetch(API_BASE_URL + path, { headers: { Authorization: "Bearer " + token } }, 12000)
+        : await apiFetch(API_BASE_URL + path, {}, 12000);
       const ok = response.ok;
       const notReady = path === "/health/ready" && response.status === 503;
       setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
