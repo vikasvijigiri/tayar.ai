@@ -185,7 +185,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0");
+        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -365,7 +365,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length);
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
