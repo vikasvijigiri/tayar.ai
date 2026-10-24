@@ -23,3 +23,19 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: PYTHONPATH=. pytest -q
+      - name: Validate Supabase schema and starter seed in PostgreSQL
+        run: |
+          set -euo pipefail
+          docker run --detach --name tayar-seed-test -e POSTGRES_PASSWORD=ci-only-password -p 54329:5432 postgres:17
+          cleanup() { docker rm -f tayar-seed-test >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec tayar-seed-test pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            if [ "$attempt" -eq 30 ]; then docker logs tayar-seed-test; exit 1; fi
+            sleep 2
+          done
+          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY); CREATE ROLE authenticated; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';"
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/schema.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_verified_math.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_verified_math.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_assertions.sql
