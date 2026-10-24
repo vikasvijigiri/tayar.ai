@@ -60,6 +60,8 @@ export default function App() {
   const [serviceCheckLoading, setServiceCheckLoading] = useState(false);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [token, setToken] = useState<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
   const refreshInFlight = useRef<Promise<{ accessToken: string | null; permanent: boolean }> | null>(null);
   const authConfigCache = useRef<{ url: string; anonKey: string; expiresAt: number } | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -296,7 +298,7 @@ export default function App() {
     init: Parameters<typeof fetch>[1] = {},
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ): Promise<Response> => {
-    const currentToken = token || await SecureStore.getItemAsync("tayar_access_token");
+    const currentToken = tokenRef.current || await SecureStore.getItemAsync("tayar_access_token");
     if (!currentToken) return apiFetch(url, init, timeoutMs);
     const withToken = (accessToken: string) => {
       const headers = new Headers(init.headers);
@@ -342,7 +344,7 @@ export default function App() {
     };
     loadQuestions();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token) return;
@@ -405,7 +407,7 @@ export default function App() {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [token, questions.length]);
+  }, [Boolean(token), questions.length]);
 
   useEffect(() => {
     setSelectedAnswer("");
