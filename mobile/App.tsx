@@ -217,9 +217,14 @@ export default function App() {
       const redirectTo = Linking.createURL("auth/callback");
       const random = await Crypto.getRandomBytesAsync(32);
       const verifier = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
-      const digestHex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier);
-      const digestBytes = (digestHex.match(/.{2}/g) || []).map((part) => parseInt(part, 16));
-      const challenge = btoa(String.fromCharCode(...digestBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      // PKCE S256 encodes the raw 32-byte SHA-256 digest as base64url.
+      // Do not base64-encode the hexadecimal text representation of the digest.
+      const digestBase64 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        verifier,
+        { encoding: Crypto.CryptoEncoding.BASE64 },
+      );
+      const challenge = digestBase64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
       await SecureStore.setItemAsync("tayar_oauth_verifier", verifier);
       const authorize = cfg.url + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(redirectTo) + "&code_challenge=" + challenge + "&code_challenge_method=s256";
       const result = await WebBrowser.openAuthSessionAsync(authorize, redirectTo);
