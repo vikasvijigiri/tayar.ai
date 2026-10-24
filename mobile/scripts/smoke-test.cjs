@@ -57,3 +57,7 @@ const timerEffectIndex = app.indexOf("// Do not consume practice time");
 if (timerEffectIndex < 0 || !app.slice(timerEffectIndex, timerEffectIndex + 260).includes('screen !== "Practice"')) {
   throw new Error("Eight-minute timer must start only on the Practice screen");
 }
+
+if (!app.includes('Linking.addEventListener("url"') || !app.includes("Linking.getInitialURL()") || !app.includes("oauthHandledUrls")) {
+  throw new Error("OAuth must handle cold-start/resume deep links and deduplicate callbacks");
+}
