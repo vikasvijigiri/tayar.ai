@@ -21,6 +21,7 @@
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "scheme": "tayarai"
   }
 }
