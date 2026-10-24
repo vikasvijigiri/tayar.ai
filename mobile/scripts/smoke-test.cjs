@@ -44,3 +44,11 @@ if (!app.includes('authRequest("otp"') || !app.includes('type: "sms"')) throw ne
 if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PASSWORD")) throw new Error("Email/password login must not be shown");
 if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
+
+if (!app.includes("Crypto.CryptoEncoding.BASE64") || !app.includes("raw 32-byte SHA-256 digest as base64url")) {
+  throw new Error("PKCE S256 challenge must base64url-encode the raw SHA-256 digest, not hex text");
+}
+if (app.includes("digestHex.match") || app.includes("btoa(String.fromCharCode(...digestBytes))")) {
+  throw new Error("Invalid PKCE hex-to-byte conversion remains");
+}
+console.log("PKCE S256 digest encoding guard passed");
