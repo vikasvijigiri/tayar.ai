@@ -41,9 +41,11 @@ jobs:
           python -m pip install pip-audit
       - name: Compile backend
         run: python -m compileall -q backend/app
-      - name: Run backend tests
+      - name: Lint backend
+        run: ruff check backend/app backend/tests
+      - name: Run backend tests with coverage report
         working-directory: backend
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q --cov=app --cov-report=term-missing
       - name: Audit production Python dependencies
         run: pip-audit -r backend/requirements.txt
 
