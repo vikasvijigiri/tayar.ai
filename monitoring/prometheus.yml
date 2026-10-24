@@ -3,9 +3,36 @@ global:
   evaluation_interval: 30s
 
 scrape_configs:
-  - job_name: tayar-ai-api
+  - job_name: tayar-ai-api-metrics
     scheme: https
     metrics_path: /metrics
     static_configs:
-      - targets:
-          - tayar-ai-api.onrender.com
+      - targets: ["tayar-ai-api.onrender.com"]
+
+  - job_name: tayar-ai-api-liveness
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["https://tayar-ai-api.onrender.com/health"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: tayar-ai-api-readiness
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["https://tayar-ai-api.onrender.com/health/ready"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
