@@ -38,10 +38,43 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    SecureStore.getItemAsync("tayar_access_token")
-      .then((saved) => { if (active) setToken(saved); })
-      .catch(() => { if (active) setToken(null); })
-      .finally(() => { if (active) setSessionLoading(false); });
+    const restoreSession = async () => {
+      try {
+        const [savedAccess, savedRefresh] = await Promise.all([
+          SecureStore.getItemAsync("tayar_access_token"),
+          SecureStore.getItemAsync("tayar_refresh_token"),
+        ]);
+        if (!savedAccess) return;
+        if (savedRefresh) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refresh_token: savedRefresh }),
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data.access_token) {
+                await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+                if (data.refresh_token) await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+                if (active) setToken(data.access_token);
+                return;
+              }
+            }
+            await SecureStore.deleteItemAsync("tayar_access_token");
+            await SecureStore.deleteItemAsync("tayar_refresh_token");
+          } catch {
+            // Keep the saved access token for this launch if the refresh service is temporarily unreachable.
+            if (active) setToken(savedAccess);
+          }
+        } else if (active) {
+          setToken(savedAccess);
+        }
+      } finally {
+        if (active) setSessionLoading(false);
+      }
+    };
+    restoreSession().catch(() => { if (active) { setToken(null); setSessionLoading(false); } });
     return () => { active = false; };
   }, []);
 
