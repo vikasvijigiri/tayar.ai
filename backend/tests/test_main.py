@@ -1,3 +1,4 @@
+import asyncio
 from fastapi.testclient import TestClient
 import app.main as main
 from app.main import app
@@ -345,3 +346,38 @@ def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
     )
     assert response.status_code == 404
     assert response.json()["detail"] == "Verified question not found."
+
+
+def test_ai_provider_success_is_instrumented(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-key")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "A concise verified hint."}}]}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            assert url == main.PROVIDERS["groq"][1]
+            assert headers["Authorization"] == "Bearer test-only-key"
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    result = asyncio.run(main.provider_completion("groq", "system", "user"))
+    assert result == "A concise verified hint."
+    metrics = client.get("/metrics").text
+    assert "tayar_ai_provider_requests_total" in metrics
+    assert 'provider="groq"' in metrics
+    assert 'outcome="success"' in metrics
+    assert "tayar_ai_provider_request_duration_seconds" in metrics
