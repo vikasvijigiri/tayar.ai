@@ -45,6 +45,7 @@ type Question = { id: string; question_text: string; options: QuestionOption[]; 
 type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
 type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
 type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
+type AttemptHistoryItem = { question_id: string; question_text: string; topic: string; is_correct: boolean; answer_given: string | null; elapsed_ms: number | null; created_at: string | null; source_document: string | null; source_page: string | null };
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("Home");
@@ -69,6 +70,8 @@ export default function App() {
   const [hint, setHint] = useState("");
   const [hintLoading, setHintLoading] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
+  const [attemptHistory, setAttemptHistory] = useState<AttemptHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(480);
   const [questionStrategy, setQuestionStrategy] = useState<"baseline" | "mixed_baseline" | "weak_topic_focus">("baseline");
   const [focusTopic, setFocusTopic] = useState<{ slug: string; topic: string; attempts: number; accuracy_pct: number } | null>(null);
@@ -230,6 +233,28 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    if (!token) { setAttemptHistory([]); return; }
+    let active = true;
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const response = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!response.ok) throw new Error("Attempt history is not available.");
+        const data = await response.json();
+        if (active) setAttemptHistory(Array.isArray(data.attempts) ? data.attempts : []);
+      } catch {
+        if (active) setAttemptHistory([]);
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    };
+    loadHistory();
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
     sessionDeadline.current = null;
     setRemainingSeconds(480);
   }, [token]);
@@ -333,6 +358,13 @@ export default function App() {
           headers: { Authorization: "Bearer " + token },
         });
         if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
+        const historyResponse = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (historyResponse.ok) {
+          const historyData = await historyResponse.json();
+          setAttemptHistory(Array.isArray(historyData.attempts) ? historyData.attempts : []);
+        }
       } catch {
         // Keep the last known summary if analytics are temporarily unavailable.
       }
@@ -517,6 +549,16 @@ export default function App() {
           <Text style={s.eyebrow}>PERFORMANCE CENTRE</Text><Text style={s.heading}>Your analytics.</Text><Text style={s.sub}>Recorded attempts only · no guessed scores</Text>
           <View style={s.grid}><Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/><Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/><Metric label="ATTEMPTS LOGGED" value={summary?String(summary.total_attempts):"—"} color={C.teal}/><Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds==null?"—":String(summary.average_time_seconds)+"s"} color={C.blue}/><Metric label="REPEAT ACCURACY" value={summary?.repeat_accuracy_pct==null?"—":String(summary.repeat_accuracy_pct)+"%"} color={C.amber}/></View>
           <View style={s.card}><Text style={s.cardTitle}>Topic performance</Text>{summary?.topic_performance?.length?summary.topic_performance.map(topic=><View key={topic.slug} style={s.topicRow}><View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View><View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View><Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average response time</Text></View>):<Text style={s.body}>Topic analytics appear after verified answers have been submitted and saved.</Text>}<Text style={[s.small,{marginTop:12}]}>Repeat accuracy is a simple signal from repeated questions, not a formal memory-retention score.</Text></View>
+          <View style={s.card}>
+            <View style={s.serviceHeading}><Text style={s.cardTitle}>Recent answer history</Text><TouchableOpacity onPress={() => { setScreen("Services"); checkService("history","/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0"); }}><Text style={s.crossLinkText}>Check API →</Text></TouchableOpacity></View>
+            {historyLoading ? <ActivityIndicator color={C.teal} style={{marginTop:12}}/> : attemptHistory.length ? attemptHistory.slice(0,10).map((attempt,index)=><View key={attempt.question_id + "-" + index} style={s.historyRow}>
+              <View style={s.serviceHeading}><Text style={[s.historyResult,{color:attempt.is_correct?C.teal:C.red}]}>{attempt.is_correct?"CORRECT":"REVIEW"}</Text><Text style={s.small}>{attempt.elapsed_ms==null?"—":(attempt.elapsed_ms/1000).toFixed(1)+"s"}</Text></View>
+              <Text style={s.cardTitle}>{attempt.topic}</Text>
+              <Text style={s.body}>{attempt.question_text}</Text>
+              <Text style={s.small}>Your answer: {attempt.answer_given || "—"} · Source: {attempt.source_document || "verified source"}{attempt.source_page ? " · page " + attempt.source_page : ""}</Text>
+            </View>) : <Text style={s.body}>Your answer history will appear here after the first saved response. If it stays empty, check service readiness and sign-in status.</Text>}
+            <TouchableOpacity onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Practice again →</Text></TouchableOpacity>
+          </View>
           <View style={s.crossLinks}><TouchableOpacity onPress={startNewTest} style={s.crossLink}><Text style={s.crossLinkText}>Practice another set →</Text></TouchableOpacity><TouchableOpacity onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Review weak topics →</Text></TouchableOpacity></View>
         </>}
         {screen === "Revision" && <>
@@ -580,5 +622,6 @@ const s=StyleSheet.create({
   disabled:{borderRadius:12,padding:12,alignItems:"center",backgroundColor:"#202D43",marginTop:18},
   navigation:{flexDirection:"row",flexWrap:"wrap",gap:6,backgroundColor:C.panel,borderRadius:16,borderWidth:1,borderColor:C.border,padding:6,marginBottom:22},navigationItem:{flexGrow:1,paddingVertical:10,paddingHorizontal:9,alignItems:"center",borderRadius:11},navigationActive:{backgroundColor:"#173C3D"},navigationText:{color:C.muted,fontSize:10,fontWeight:"800"},navigationTextActive:{color:C.teal},
   nav:{flexDirection:"row",flexWrap:"wrap",gap:4,backgroundColor:C.panel,borderRadius:16,borderWidth:1,borderColor:C.border,padding:5,marginTop:8,marginBottom:14},navItem:{flexGrow:1,paddingVertical:12,paddingHorizontal:7,alignItems:"center",borderRadius:12},active:{backgroundColor:"#173C3D"},footer:{color:"#61728C",fontSize:10,lineHeight:16,textAlign:"center",marginTop:8},
+  historyRow:{paddingVertical:12,borderBottomWidth:1,borderBottomColor:C.border,gap:5},historyResult:{fontSize:9,fontWeight:"900",letterSpacing:1},
   shortcutGrid:{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",marginBottom:22},shortcut:{width:"48.2%",minHeight:98,padding:13,borderRadius:15,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:10,justifyContent:"space-between"},shortcutTitle:{color:C.text,fontSize:12,fontWeight:"800"},shortcutDetail:{color:C.muted,fontSize:10,lineHeight:15,marginTop:8},secondaryButton:{borderRadius:12,borderWidth:1,borderColor:C.border,paddingVertical:12,paddingHorizontal:14,alignItems:"center",marginTop:12},secondaryButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},crossLinks:{flexDirection:"row",flexWrap:"wrap",gap:10,marginBottom:18},crossLink:{paddingVertical:9,paddingHorizontal:12,borderRadius:10,backgroundColor:C.panel2},crossLinkText:{color:C.blue,fontSize:11,fontWeight:"800"},serviceHeading:{flexDirection:"row",alignItems:"center",justifyContent:"space-between"},serviceBadge:{fontSize:9,fontWeight:"900",letterSpacing:1},endpoint:{color:C.teal,fontSize:12,fontWeight:"800",marginTop:8}
 });
