@@ -101,6 +101,14 @@ def test_signin_fails_closed_without_supabase_configuration(monkeypatch):
     assert "not configured" in r.json()["detail"]
 
 
+def test_refresh_fails_closed_without_supabase_configuration(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    r = client.post("/v1/auth/refresh", json={"refresh_token": "refresh-token-for-testing"})
+    assert r.status_code == 503
+    assert "not configured" in r.json()["detail"]
+
+
 def test_auth_rejects_short_password():
     r = client.post("/v1/auth/signin", json={"email": "test@example.com", "password": "short"})
     assert r.status_code == 422
