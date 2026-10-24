@@ -10,8 +10,9 @@ import httpx
 
 BACKEND = Path(__file__).resolve().parents[1]
 BASE_URL = "http://127.0.0.1:8765"
-WORKERS = 10
-REQUESTS_PER_WORKER = 20
+WORKERS = max(1, int(os.getenv("LOAD_WORKERS", "10")))
+REQUESTS_PER_WORKER = max(1, int(os.getenv("LOAD_REQUESTS_PER_WORKER", "20")))
+P95_LIMIT_SECONDS = max(0.1, float(os.getenv("LOAD_P95_LIMIT_SECONDS", "2.0")))
 ENDPOINTS = [
     ("/health", 200),
     ("/v1/config", 200),
@@ -83,11 +84,14 @@ async def run_load() -> None:
             raise AssertionError("; ".join(failures[:10]))
         ordered = sorted(latencies)
         p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
-        if p95 > 2.0:
-            raise AssertionError(f"Local API p95 latency {p95:.3f}s exceeded 2.0s")
+        if p95 > P95_LIMIT_SECONDS:
+            raise AssertionError(
+                f"Local API p95 latency {p95:.3f}s exceeded {P95_LIMIT_SECONDS:.3f}s"
+            )
         print(
             f"Local concurrency smoke passed: {len(latencies)} requests, "
-            f"{WORKERS} concurrent workers, p95={p95 * 1000:.1f}ms"
+            f"{WORKERS} concurrent workers, p95={p95 * 1000:.1f}ms, "
+            f"limit={P95_LIMIT_SECONDS * 1000:.0f}ms"
         )
     finally:
         process.terminate()
