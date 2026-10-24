@@ -54,3 +54,6 @@ console.log("Session refresh, single-flight and bounded-cache checks passed");
 if (!app.includes("tokenRef.current = token") || !app.includes("const currentToken = tokenRef.current")) throw new Error("Long-lived callbacks must use the latest access token");
 if (!app.includes("}, [Boolean(token)]);") || !app.includes("}, [Boolean(token), questions.length]);")) throw new Error("Access-token rotation must not restart practice sessions or reload user data");
 console.log("Token rotation preserves practice progress checks passed");
+
+if (!app.includes("lastSent?.phone === normalizedPhone") || !app.includes("at: Date.now()")) throw new Error("OTP resend cooldown must be scoped to the destination phone");
+console.log("Per-phone OTP cooldown checks passed");
