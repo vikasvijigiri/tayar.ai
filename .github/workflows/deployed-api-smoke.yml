@@ -52,7 +52,9 @@ jobs:
           }
           check_status "/v1/attempts/summary" "401"
           check_status "/v1/ai/hint" "422"
-          check_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" "401"
+          code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' -X POST -H "Content-Type: application/json" -d '{"answer_given":"A","elapsed_ms":1000}' "$API_BASE_URL/v1/questions/00000000-0000-0000-0000-000000000001/answer")
+          echo "Answer endpoint returned HTTP $code (expected 401)"
+          test "$code" = "401"
 
       - name: Verify Supabase-backed readiness and verified question delivery
         env:
