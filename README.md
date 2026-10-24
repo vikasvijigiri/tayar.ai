@@ -11,7 +11,7 @@ Android-first adaptive exam preparation. RRB NTPC is the first exam configuratio
 - GitHub Actions tests and Android APK/AAB build artifacts
 
 ## Source integrity
-A reviewed starter SQL seed is provided at `backend/supabase/seed_verified_math.sql`. It contains ten Number System questions checked directly against the uploaded chapter-wise PDF, with original options, answer keys, shift metadata and PDF page references. The solution steps are independently authored and arithmetically checked, not claimed as verbatim PDF explanations. Run the seed only after `backend/supabase/schema.sql`; the app will not show these questions until the seed has been applied to the connected Supabase project. Continue importing only questions verified directly against source PDFs. AI must never alter the stored answer key.
+A reviewed starter SQL seed is provided at `backend/supabase/seed_verified_math.sql`. It contains 14 questions across Number System, L.C.M and H.C.F, Percentage, Time and Work, and Pipe and Cistern. Each question's wording, original options, answer key and source page/shift were checked directly against the uploaded PDFs. The solution steps are independently authored and arithmetically checked, not claimed as verbatim PDF explanations. Run the seed only after `backend/supabase/schema.sql`; the app will not show these questions until the seed has been applied to the connected Supabase project. Continue importing only questions verified directly against source PDFs. AI must never alter the stored answer key.
 
 ## Backend local run
 ```bash
@@ -70,7 +70,7 @@ Never commit API keys. Never place a Supabase service-role key or AI key in the 
 Pushes and pull requests run backend tests, dependency audit, mobile type checking/smoke tests, and Android builds. The Android workflow builds an installable APK and a Play Store AAB, reports their sizes, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts. Pushing a tag such as `v0.1.0` attaches release files to a GitHub Release.
 
 ## Current limitations
-- The ten-question starter seed is committed but must still be applied to the target Supabase project; the live app currently has no published question bank until that is done.
+- The 14-question starter seed is committed but must still be applied to the target Supabase project; the live app currently has no published question bank until that is done.
 - Sign-up/sign-in UI, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented but require live Supabase integration tests before production use.
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
