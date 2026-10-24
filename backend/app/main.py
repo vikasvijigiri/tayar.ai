@@ -334,10 +334,6 @@ async def auth_signin(payload: AuthCredentials):
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
 
 
-class RefreshCredentials(BaseModel):
-    refresh_token: str = Field(min_length=10, max_length=4096)
-
-
 @app.post("/v1/auth/refresh")
 async def auth_refresh(payload: RefreshCredentials):
     """Rotate a Supabase refresh token without exposing provider keys to the app."""
