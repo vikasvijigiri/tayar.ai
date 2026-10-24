@@ -1,6 +1,7 @@
 import os
 from time import perf_counter
 from typing import Literal
+from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -359,7 +360,7 @@ async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Query(
 
 
 @app.post("/v1/questions/{question_id}/answer")
-async def answer_verified_question(question_id: str, payload: QuestionAnswerIn, request: Request):
+async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn, request: Request):
     """Grade on the server and save an attempt; answer keys never come from the client."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
