@@ -52,3 +52,8 @@ if (app.includes("digestHex.match") || app.includes("btoa(String.fromCharCode(..
   throw new Error("Invalid PKCE hex-to-byte conversion remains");
 }
 console.log("PKCE S256 digest encoding guard passed");
+
+const timerEffectIndex = app.indexOf("// Do not consume practice time");
+if (timerEffectIndex < 0 || !app.slice(timerEffectIndex, timerEffectIndex + 260).includes('screen !== "Practice"')) {
+  throw new Error("Eight-minute timer must start only on the Practice screen");
+}
