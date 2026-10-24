@@ -30,6 +30,15 @@ async function apiFetch(
     clearTimeout(timeout);
   }
 }
+
+// This key is an idempotency identifier, not an authentication secret.
+function createIdempotencyKey(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 const C = {
   bg: "#0A1020", panel: "#121C30", panel2: "#17243B", text: "#F4F7FC",
   muted: "#9AAAC3", teal: "#53E0C1", blue: "#85A9FF", amber: "#FFC76A",
@@ -80,6 +89,7 @@ export default function App() {
   const [focusTopic, setFocusTopic] = useState<{ slug: string; topic: string; attempts: number; accuracy_pct: number } | null>(null);
   const questionStartedAt = useRef(Date.now());
   const sessionDeadline = useRef<number | null>(null);
+  const answerRequestKeys = useRef<Map<string, string>>(new Map());
   // Keep hint results for this app session to avoid repeated paid inference for the same question.
   const hintCache = useRef<Map<string, string>>(new Map());
 
@@ -344,9 +354,19 @@ export default function App() {
     setAnswerLoading(true);
     setQuestionError("");
     try {
+      // Reuse the same key after a timeout/network error; remove it only after a confirmed success.
+      let idempotencyKey = answerRequestKeys.current.get(question.id);
+      if (!idempotencyKey) {
+        idempotencyKey = createIdempotencyKey();
+        answerRequestKeys.current.set(question.id, idempotencyKey);
+      }
       const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           answer_given: selectedAnswer,
           elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
@@ -360,6 +380,7 @@ export default function App() {
         }
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
+      answerRequestKeys.current.delete(question.id);
       setFeedback(data as AnswerFeedback);
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
