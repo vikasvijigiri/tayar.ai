@@ -68,6 +68,7 @@ export default function App() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const otpLastSentAt = useRef(0);
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -180,8 +181,14 @@ export default function App() {
 
   const storeSession = async (data: { access_token?: unknown; refresh_token?: unknown }) => {
     if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") throw new Error("Sign-in did not return a valid session.");
-    await SecureStore.setItemAsync("tayar_access_token", data.access_token);
-    await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+    try {
+      await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+      await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+    } catch (error) {
+      await SecureStore.deleteItemAsync("tayar_access_token");
+      await SecureStore.deleteItemAsync("tayar_refresh_token");
+      throw error;
+    }
     setToken(data.access_token); setAuthMessage(""); setAuthError(false); setOtp("");
   };
 
@@ -189,8 +196,10 @@ export default function App() {
     setAuthMessage(""); setAuthError(false);
     const normalizedPhone = phone.trim().replace(/[\s().-]/g, "");
     if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) { setAuthError(true); setAuthMessage("Enter phone with country code, e.g. +91…"); return; }
+    const waitMs = 30000 - (Date.now() - otpLastSentAt.current);
+    if (waitMs > 0) { setAuthError(true); setAuthMessage("Wait " + Math.ceil(waitMs / 1000) + "s before requesting another code."); return; }
     setAuthLoading(true);
-    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
+    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = Date.now(); setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
     catch (error) { setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Could not send code."); }
     finally { setAuthLoading(false); }
   };
@@ -233,10 +242,18 @@ export default function App() {
   };
 
     const signOut = async () => {
+    const access = await SecureStore.getItemAsync("tayar_access_token");
+    if (access) {
+      try {
+        const cfg = await authConfig();
+        await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
+      } catch { /* Local logout still succeeds during provider outages. */ }
+    }
     await SecureStore.deleteItemAsync("tayar_access_token");
     await SecureStore.deleteItemAsync("tayar_refresh_token");
+    await SecureStore.deleteItemAsync("tayar_oauth_verifier");
     setToken(null);
-    setAuthMessage("You have signed out.");
+    setAuthMessage("");
     setAuthError(false);
   };
 
