@@ -26,6 +26,7 @@ type AuthMode = "signin" | "signup";
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
 type Question = { id: string; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
 type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
+type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; recent_attempts: number };
 
 export default function App() {
   const [tab, setTab] = useState("Today");
@@ -45,6 +46,7 @@ export default function App() {
   const [selectedAnswer, setSelectedAnswer] = useState("");
   const [answerLoading, setAnswerLoading] = useState(false);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
+  const [summary, setSummary] = useState<AttemptSummary | null>(null);
   const questionStartedAt = useRef(Date.now());
 
   useEffect(() => {
@@ -219,6 +221,25 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    if (!token) return;
+    let active = true;
+    const loadSummary = async () => {
+      try {
+        const response = await fetch(API_BASE_URL + "/v1/attempts/summary", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!response.ok) throw new Error("Attempt summary is not available yet.");
+        const data = await response.json();
+        if (active) setSummary(data as AttemptSummary);
+      } catch {
+        if (active) setSummary(null);
+      }
+    };
+    loadSummary();
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
     setSelectedAnswer("");
     setFeedback(null);
     questionStartedAt.current = Date.now();
@@ -276,8 +297,8 @@ export default function App() {
     }
   };
 
-  const lastFiveAccuracy = "—";
-  const overallAccuracy = "—";
+  const lastFiveAccuracy = summary?.last_5_accuracy_pct == null ? "—" : String(summary.last_5_accuracy_pct) + "%";
+  const overallAccuracy = summary?.overall_accuracy_pct == null ? "—" : String(summary.overall_accuracy_pct) + "%";
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
@@ -290,13 +311,13 @@ export default function App() {
         <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text>
         <Text style={s.heading}>Make every{"\n"}attempt count.</Text>
         <Text style={s.sub}>RRB NTPC · Adaptive practice</Text>
-        <View style={s.hero}><Text style={s.label}>READINESS INDEX</Text><Text style={s.heroTitle}>Building your baseline</Text><View style={s.track}><View style={s.fill}/></View><Text style={s.small}>Complete verified practice sessions to unlock personalised insights.</Text></View>
+        <View style={s.hero}><Text style={s.label}>READINESS INDEX</Text><Text style={s.heroTitle}>{summary && summary.total_attempts > 0 ? "Your baseline is taking shape" : "Building your baseline"}</Text><View style={s.track}><View style={s.fill}/></View><Text style={s.small}>Complete verified practice sessions to unlock personalised insights.</Text></View>
         <Text style={s.section}>Your learning signals</Text>
         <View style={s.grid}>
           <Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/>
           <Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/>
           <Metric label="WEAKNESS RADAR" value="Not enough data" color={C.amber}/>
-          <Metric label="MOMENTUM" value="Awaiting attempts" color={C.teal}/>
+          <Metric label="ATTEMPTS LOGGED" value={summary ? String(summary.total_attempts) : "—"} color={C.teal}/>
         </View>
         <Text style={s.section}>Your next best action</Text>
         <View style={s.card}><Text style={s.cardTitle}>Establish your baseline</Text><Text style={s.body}>A short diagnostic identifies topics needing attention first. Practice will use verified source material only.</Text></View>
