@@ -1,0 +1,4 @@
+{
+  "expo": {"name":"Tayar.ai","slug":"tayar-ai","version":"0.1.0","orientation":"portrait","userInterfaceStyle":"dark",
+    "android":{"package":"ai.tayar.adaptive","versionCode":1,"permissions":[]}}
+}
