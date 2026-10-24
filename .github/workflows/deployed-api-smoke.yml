@@ -81,6 +81,11 @@ jobs:
               ready=true
               break
             fi
+            if grep -q '"missing_configuration"' /tmp/readiness.json; then
+              cat /tmp/readiness.json
+              echo "Supabase environment variables are missing in Render. Configure SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY, then redeploy."
+              exit 1
+            fi
             echo "Readiness attempt $attempt returned HTTP $code; waiting for deploy/configuration..."
             sleep 15
           done
