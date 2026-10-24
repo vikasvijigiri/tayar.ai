@@ -80,6 +80,8 @@ export default function App() {
   const [focusTopic, setFocusTopic] = useState<{ slug: string; topic: string; attempts: number; accuracy_pct: number } | null>(null);
   const questionStartedAt = useRef(Date.now());
   const sessionDeadline = useRef<number | null>(null);
+  // Keep hint results for this app session to avoid repeated paid inference for the same question.
+  const hintCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     let active = true;
@@ -360,13 +362,16 @@ export default function App() {
       }
       setFeedback(data as AnswerFeedback);
       try {
-        const summaryResponse = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
-          headers: { Authorization: "Bearer " + token },
-        });
+        // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
+        const [summaryResponse, historyResponse] = await Promise.all([
+          apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+            headers: { Authorization: "Bearer " + token },
+          }),
+          apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+            headers: { Authorization: "Bearer " + token },
+          }),
+        ]);
         if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
-        const historyResponse = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
-          headers: { Authorization: "Bearer " + token },
-        });
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
           setAttemptHistory(Array.isArray(historyData.attempts) ? historyData.attempts : []);
@@ -384,6 +389,12 @@ export default function App() {
   const requestHint = async () => {
     const question = questions[questionIndex];
     if (!question || !token || hintLoading || hint) return;
+    const cacheKey = question.id + ":nudge";
+    const cachedHint = hintCache.current.get(cacheKey);
+    if (cachedHint) {
+      setHint(cachedHint);
+      return;
+    }
     setHintLoading(true);
     setQuestionError("");
     try {
@@ -394,7 +405,9 @@ export default function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
-      setHint(data.hint || "A verified hint is not available for this question yet.");
+      const resolvedHint = data.hint || "A verified hint is not available for this question yet.";
+      hintCache.current.set(cacheKey, resolvedHint);
+      setHint(resolvedHint);
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
     } finally {
