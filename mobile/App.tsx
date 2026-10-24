@@ -426,7 +426,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -453,7 +453,7 @@ export default function App() {
     let active = true;
     const loadSummary = async () => {
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
@@ -473,7 +473,7 @@ export default function App() {
     const loadHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt history is not available.");
@@ -569,7 +569,7 @@ export default function App() {
         idempotencyKey = createIdempotencyKey();
         answerRequestKeys.current.set(question.id, idempotencyKey);
       }
-      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -584,8 +584,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          throw new Error("Session expired or temporarily unavailable. Please retry.");
         }
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
@@ -594,10 +593,10 @@ export default function App() {
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
         const [summaryResponse, historyResponse] = await Promise.all([
-          apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
             headers: { Authorization: "Bearer " + token },
           }),
-          apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
@@ -628,7 +627,7 @@ export default function App() {
     setHintLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/ai/hint", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
@@ -654,7 +653,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + (totalQuestionCount > 0 ? (testOffset + questions.length) % totalQuestionCount : questions.length), { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + (totalQuestionCount > 0 ? (testOffset + questions.length) % totalQuestionCount : questions.length), { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
@@ -679,7 +678,7 @@ export default function App() {
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
@@ -697,7 +696,9 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
+      const response = token
+        ? await authenticatedFetch(API_BASE_URL + path, { headers: { Authorization: "Bearer " + token } }, 12000)
+        : await apiFetch(API_BASE_URL + path, {}, 12000);
       const ok = response.ok;
       const notReady = path === "/health/ready" && response.status === 503;
       setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
