@@ -2,7 +2,7 @@ const fs = require('fs');
 const app = fs.readFileSync('App.tsx', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const sessionGateIndex = app.indexOf('  if (sessionLoading) {');
-const authGateIndex = app.indexOf('  if (!token) {');
+const authGateIndex = app.indexOf('  if (!token) {\n    return (');
 const lastHookIndex = Math.max(app.lastIndexOf('useEffect('), app.lastIndexOf('useState('), app.lastIndexOf('useRef('));
 if (sessionGateIndex < 0 || authGateIndex < 0 || lastHookIndex > sessionGateIndex || lastHookIndex > authGateIndex) {
   throw new Error('All React hooks must be declared before any conditional render, including session restore');
