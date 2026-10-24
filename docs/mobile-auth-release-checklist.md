@@ -16,7 +16,7 @@ The mobile app intentionally supports **SMS OTP and Google OAuth only**. Email/p
 
 - Send and verify an SMS OTP on a real phone; confirm wrong, expired, replayed, and rate-limited codes fail.
 - Complete Google sign-in on a physical Android device, including cancellation and denied-consent cases.
-- Confirm tokens persist securely, refresh rotates the session, logout revokes the provider session, and protected API routes reject missing/invalid tokens.
+- Confirm tokens persist securely, refresh rotates the session, logout requests provider-side session revocation when reachable (and always clears local tokens), and protected API routes reject missing/invalid tokens.
 - Confirm backend health/readiness, source-verification gates, answer idempotency, and AI hint cache behavior.
 - Run GitHub Actions: Quality Gates, Backend CI, Dependency Audit, Monitoring Config CI, and Android APK.
 - A workflow-generated APK signed with a one-time QA key is installable for testing but **cannot be used for reliable production upgrades**. Configure the persistent Android signing secrets before publishing a production release.
