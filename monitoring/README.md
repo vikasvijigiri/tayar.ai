@@ -1,22 +1,33 @@
 # Tayar.ai production monitoring
 
-## What is implemented in the API
+## Monitoring stack
 
-- `GET /health`: liveness check.
-- `GET /health/ready`: checks required Supabase configuration and connectivity without returning secrets.
-- `GET /metrics`: Prometheus text exposition for request count and latency histograms.
-- Request metrics are labelled by HTTP method, normalized route, and status code. The metrics endpoint itself is excluded from request counters to avoid self-scrape noise.
+The repository includes a self-hosted Prometheus + Blackbox Exporter + Grafana stack:
 
-## Prometheus
+- `monitoring/docker-compose.yml` — local monitoring services; Grafana sign-up is disabled and an admin password is required through `GRAFANA_ADMIN_PASSWORD`.
+- `monitoring/prometheus.yml` — scrapes the API metrics endpoint and probes liveness/readiness.
+- `monitoring/blackbox.yml` — HTTP 200 probes.
+- `monitoring/grafana/provisioning/datasources/prometheus.yml` — provisions Prometheus in Grafana.
+- `monitoring/grafana/provisioning/dashboards/provider.yml` and `monitoring/grafana/tayar-api-reliability.json` — provisions the dashboard.
 
-The scrape configuration is in `monitoring/prometheus/prometheus.yml`. Add it to a Prometheus server (or merge its scrape job into the existing configuration). Load alert rules from `monitoring/prometheus/tayar-alerts.yml`.
+## API endpoints monitored
 
-The target is the public Render service `https://tayar-ai-api.onrender.com/metrics`. A successful local API health check does not prove that Prometheus is scraping it; verify the Prometheus target status after applying the config.
+- `GET /health` — liveness.
+- `GET /health/ready` — checks required Supabase configuration and connectivity without returning secrets.
+- `GET /metrics` — Prometheus text exposition for request counters and latency histograms.
+- The dashboard shows request rate, 5xx error ratio, p95 latency, requests by endpoint/status, and API liveness/readiness.
 
-## Grafana
+## Start locally
 
-Import `monitoring/grafana/tayar-api-dashboard.json` into Grafana and select the Prometheus data source that scrapes the target. The dashboard covers request rate, 5xx rate, p95 latency, scrape health, per-route throughput, latency percentiles, and HTTP status distribution.
+From the repository root, set a strong unique Grafana password in your shell and run:
 
-## Important limitation
+```bash
+export GRAFANA_ADMIN_PASSWORD='use-a-strong-local-password'
+docker compose -f monitoring/docker-compose.yml up -d
+```
 
-Dashboard and alert definitions are checked into source control, but this alone does not create a Grafana Cloud stack, connect a data source, or send alert notifications. Those require a running Prometheus/Grafana instance and its own credentials/notification configuration. Do not commit Grafana, Prometheus, Render, or Supabase secrets to this repository.
+Then open Grafana at `http://localhost:3000`. Check Prometheus targets at `http://localhost:9090/targets`. Do not commit credentials or expose these local admin endpoints publicly.
+
+## Readiness limitation
+
+A running local monitoring stack does not mean Grafana is hosted or continuously available. The current configuration must be started on a machine with Docker, and its scrape target requires the deployed API to be reachable. Render readiness will remain unhealthy until the required Supabase environment variables are correctly set and the database connectivity check passes.
