@@ -7,8 +7,8 @@ BEGIN
   FROM public.questions
   WHERE exam_id = 'rrb_ntpc' AND active = true AND source_verified = true;
 
-  IF question_count <> 14 THEN
-    RAISE EXCEPTION 'Expected 14 active source-verified starter questions, found %', question_count;
+  IF question_count <> 38 THEN
+    RAISE EXCEPTION 'Expected 38 active source-verified questions, found %', question_count;
   END IF;
 
   SELECT count(*) INTO topic_count
@@ -17,7 +17,7 @@ BEGIN
     AND slug IN ('number-system', 'lcm-hcf', 'percentage', 'time-and-work', 'pipe-and-cistern');
 
   IF topic_count <> 5 THEN
-    RAISE EXCEPTION 'Expected five starter topics, found %', topic_count;
+    RAISE EXCEPTION 'Expected five syllabus topics, found %', topic_count;
   END IF;
 
   IF EXISTS (
@@ -29,7 +29,7 @@ BEGIN
         OR source_document IS NULL OR source_page IS NULL
         OR jsonb_array_length(solution_steps) = 0)
   ) THEN
-    RAISE EXCEPTION 'A published starter question is missing options, answer key, source metadata, or solution steps';
+    RAISE EXCEPTION 'A published question is missing options, answer key, source metadata, or solution steps';
   END IF;
 
   IF EXISTS (
@@ -44,6 +44,6 @@ BEGIN
         WHERE left(opt.value, length(q.answer_key) + 1) = q.answer_key || ')'
       )
   ) THEN
-    RAISE EXCEPTION 'A starter answer key does not match any option label';
+    RAISE EXCEPTION 'A question answer key does not match any option label';
   END IF;
 END $$;
