@@ -397,7 +397,10 @@ async def get_hint(payload: HintIn, request: Request):
 
 
 class RefreshCredentials(BaseModel):
-    refresh_token: str = Field(min_length=10, max_length=4096)@app.post("/v1/auth/refresh")
+    refresh_token: str = Field(min_length=10, max_length=4096)
+
+
+@app.post("/v1/auth/refresh")
 async def auth_refresh(payload: RefreshCredentials):
     """Rotate a Supabase refresh token without exposing provider keys to the app."""
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
