@@ -50,3 +50,7 @@ if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh m
 if (!app.includes("authConfigCache.current") || !app.includes("expiresAt: Date.now() + 5 * 60 * 1000")) throw new Error("Supabase public config should be cached briefly");
 if (!app.includes("hintCache.current.size > 256")) throw new Error("Client hint cache must be bounded");
 console.log("Session refresh, single-flight and bounded-cache checks passed");
+
+if (!app.includes("tokenRef.current = token") || !app.includes("const currentToken = tokenRef.current")) throw new Error("Long-lived callbacks must use the latest access token");
+if (!app.includes("}, [Boolean(token)]);") || !app.includes("}, [Boolean(token), questions.length]);")) throw new Error("Access-token rotation must not restart practice sessions or reload user data");
+console.log("Token rotation preserves practice progress checks passed");
