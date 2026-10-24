@@ -1,0 +1,72 @@
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "mobile/**"
+      - ".github/workflows/quality-gates.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "mobile/**"
+      - ".github/workflows/quality-gates.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests and dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements-dev.txt
+          python -m pip install pip-audit
+      - name: Compile backend
+        run: python -m compileall -q backend/app
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest tests -q
+      - name: Audit production Python dependencies
+        run: pip-audit -r backend/requirements.txt
+
+  mobile:
+    name: Mobile typecheck, smoke tests and Android bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm install --no-audit --no-fund
+      - name: TypeScript typecheck
+        working-directory: mobile
+        run: npm run typecheck
+      - name: Mobile source smoke tests
+        working-directory: mobile
+        run: npm test
+      - name: Export Android JavaScript bundle
+        working-directory: mobile
+        run: npx expo export --platform android --output-dir /tmp/tayar-android-export
