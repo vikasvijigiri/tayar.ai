@@ -1,9 +1,8 @@
 import asyncio
 
-from fastapi.testclient import TestClient
-
 from app import main
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
