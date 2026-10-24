@@ -432,3 +432,54 @@ async def answer_verified_question(question_id: str, payload: QuestionAnswerIn, 
         "source_document": question.get("source_document"),
         "source_page": question.get("source_page"),
     }
+
+
+@app.get("/v1/attempts/summary")
+async def attempts_summary(request: Request):
+    """Compute lightweight accuracy and speed signals from the authenticated user's own attempts."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not base_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Attempt history is not configured.")
+    headers = {"apikey": anon_key, "Authorization": f"Bearer {token}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            response = await client.get(
+                f"{base_url}/rest/v1/attempts",
+                params={
+                    "select": "is_correct,elapsed_ms,created_at",
+                    "order": "created_at.desc",
+                    "limit": "1000",
+                },
+                headers=headers,
+            )
+        if response.status_code in (401, 403):
+            raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+        if response.status_code >= 500:
+            raise HTTPException(status_code=502, detail="Attempt history database is temporarily unavailable.")
+        response.raise_for_status()
+        rows = response.json()
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="Attempt history request failed.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Attempt history service is temporarily unreachable.")
+
+    total = len(rows)
+    correct = sum(1 for row in rows if row.get("is_correct") is True)
+    last_five = rows[:5]
+    last_five_correct = sum(1 for row in last_five if row.get("is_correct") is True)
+    average_elapsed_ms = round(sum(int(row.get("elapsed_ms") or 0) for row in rows) / total) if total else None
+    return {
+        "total_attempts": total,
+        "overall_accuracy_pct": round(correct * 100 / total, 1) if total else None,
+        "last_5_accuracy_pct": round(last_five_correct * 100 / len(last_five), 1) if last_five else None,
+        "average_time_seconds": round(average_elapsed_ms / 1000, 1) if average_elapsed_ms is not None else None,
+        "recent_attempts": len(last_five),
+        "data_window": "latest 1000 attempts",
+    }
