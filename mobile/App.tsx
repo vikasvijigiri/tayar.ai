@@ -60,11 +60,15 @@ export default function App() {
   const [serviceCheckLoading, setServiceCheckLoading] = useState(false);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [token, setToken] = useState<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
+  const refreshInFlight = useRef<Promise<{ accessToken: string | null; permanent: boolean }> | null>(null);
+  const authConfigCache = useRef<{ url: string; anonKey: string; expiresAt: number } | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const otpLastSentAt = useRef(0);
+  const otpLastSentAt = useRef<{ phone: string; at: number } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -156,11 +160,15 @@ export default function App() {
   }, []);
 
   const authConfig = async (): Promise<{ url: string; anonKey: string }> => {
+    const cached = authConfigCache.current;
+    if (cached && cached.expiresAt > Date.now()) return { url: cached.url, anonKey: cached.anonKey };
     const response = await apiFetch(API_BASE_URL + "/v1/config", {}, 10000);
     if (!response.ok) throw new Error("Sign-in unavailable.");
     const data = await response.json();
     if (typeof data.supabase_url !== "string" || typeof data.supabase_anon_key !== "string" || !data.supabase_url.startsWith("https://") || !data.supabase_anon_key) throw new Error("Sign-in is not configured.");
-    return { url: data.supabase_url.replace(/\/$/, ""), anonKey: data.supabase_anon_key };
+    const config = { url: data.supabase_url.replace(/\/$/, ""), anonKey: data.supabase_anon_key };
+    authConfigCache.current = { ...config, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return config;
   };
 
   const authRequest = async (path: string, body: Record<string, unknown>) => {
@@ -192,10 +200,11 @@ export default function App() {
     setAuthMessage(""); setAuthError(false);
     const normalizedPhone = phone.trim().replace(/[\s().-]/g, "");
     if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) { setAuthError(true); setAuthMessage("Enter phone with country code, e.g. +91…"); return; }
-    const waitMs = 30000 - (Date.now() - otpLastSentAt.current);
+    const lastSent = otpLastSentAt.current;
+    const waitMs = lastSent?.phone === normalizedPhone ? 30000 - (Date.now() - lastSent.at) : 0;
     if (waitMs > 0) { setAuthError(true); setAuthMessage("Wait " + Math.ceil(waitMs / 1000) + "s before requesting another code."); return; }
     setAuthLoading(true);
-    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = Date.now(); setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
+    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = { phone: normalizedPhone, at: Date.now() }; setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
     catch (error) { setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Could not send code."); }
     finally { setAuthLoading(false); }
   };
@@ -253,6 +262,62 @@ export default function App() {
     setAuthError(false);
   };
 
+  const refreshSession = async (): Promise<{ accessToken: string | null; permanent: boolean }> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const pending = (async () => {
+      const refreshToken = await SecureStore.getItemAsync("tayar_refresh_token");
+      if (!refreshToken) return { accessToken: null, permanent: true };
+      try {
+        const response = await apiFetch(API_BASE_URL + "/v1/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        }, 15000);
+        if (!response.ok) {
+          return { accessToken: null, permanent: response.status === 400 || response.status === 401 };
+        }
+        const data = await response.json();
+        if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") {
+          return { accessToken: null, permanent: true };
+        }
+        await storeSession(data);
+        return { accessToken: data.access_token, permanent: false };
+      } catch {
+        return { accessToken: null, permanent: false };
+      }
+    })();
+    refreshInFlight.current = pending;
+    try {
+      return await pending;
+    } finally {
+      if (refreshInFlight.current === pending) refreshInFlight.current = null;
+    }
+  };
+
+  const authenticatedFetch = async (
+    url: string,
+    init: Parameters<typeof fetch>[1] = {},
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> => {
+    const currentToken = tokenRef.current || await SecureStore.getItemAsync("tayar_access_token");
+    if (!currentToken) return apiFetch(url, init, timeoutMs);
+    const withToken = (accessToken: string) => {
+      const headers = new Headers(init.headers);
+      headers.set("Authorization", "Bearer " + accessToken);
+      return { ...init, headers };
+    };
+    const response = await apiFetch(url, withToken(currentToken), timeoutMs);
+    if (response.status !== 401) return response;
+    const refreshed = await refreshSession();
+    if (!refreshed.accessToken) {
+      if (refreshed.permanent) await signOut();
+      return response;
+    }
+    const retried = await apiFetch(url, withToken(refreshed.accessToken), timeoutMs);
+    if (retried.status === 401) await signOut();
+    return retried;
+  };
+
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -260,7 +325,7 @@ export default function App() {
       setQuestionLoading(true);
       setQuestionError("");
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
         if (active) {
@@ -280,14 +345,14 @@ export default function App() {
     };
     loadQuestions();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token) return;
     let active = true;
     const loadSummary = async () => {
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
@@ -299,7 +364,7 @@ export default function App() {
     };
     loadSummary();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token) { setAttemptHistory([]); return; }
@@ -307,7 +372,7 @@ export default function App() {
     const loadHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+        const response = await authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt history is not available.");
@@ -321,12 +386,12 @@ export default function App() {
     };
     loadHistory();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     sessionDeadline.current = null;
     setRemainingSeconds(480);
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token || questions.length === 0) return;
@@ -343,7 +408,7 @@ export default function App() {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [token, questions.length]);
+  }, [Boolean(token), questions.length]);
 
   useEffect(() => {
     setSelectedAnswer("");
@@ -402,7 +467,7 @@ export default function App() {
         idempotencyKey = createIdempotencyKey();
         answerRequestKeys.current.set(question.id, idempotencyKey);
       }
-      const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -417,8 +482,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          throw new Error("Your session expired or could not be refreshed. Please try again.");
         }
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
@@ -427,10 +491,10 @@ export default function App() {
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
         const [summaryResponse, historyResponse] = await Promise.all([
-          apiFetch(API_BASE_URL + "/v1/attempts/summary", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/summary", {
             headers: { Authorization: "Bearer " + token },
           }),
-          apiFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
+          authenticatedFetch(API_BASE_URL + "/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0", {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
@@ -455,13 +519,15 @@ export default function App() {
     const cacheKey = question.id + ":nudge";
     const cachedHint = hintCache.current.get(cacheKey);
     if (cachedHint) {
+      hintCache.current.delete(cacheKey);
+      hintCache.current.set(cacheKey, cachedHint);
       setHint(cachedHint);
       return;
     }
     setHintLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/ai/hint", {
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/ai/hint", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
@@ -470,6 +536,11 @@ export default function App() {
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
       const resolvedHint = data.hint || "A verified hint is not available for this question yet.";
       hintCache.current.set(cacheKey, resolvedHint);
+      while (hintCache.current.size > 256) {
+        const oldestKey = hintCache.current.keys().next().value;
+        if (oldestKey === undefined) break;
+        hintCache.current.delete(oldestKey);
+      }
       setHint(resolvedHint);
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
@@ -487,7 +558,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
@@ -512,7 +583,7 @@ export default function App() {
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
+      const response = await authenticatedFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
@@ -530,7 +601,7 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
+      const response = await (token ? authenticatedFetch(API_BASE_URL + path, { headers: { Authorization: "Bearer " + token } }, 12000) : apiFetch(API_BASE_URL + path, {}, 12000));
       const ok = response.ok;
       const notReady = path === "/health/ready" && response.status === 503;
       setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
