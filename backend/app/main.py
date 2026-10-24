@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -544,7 +544,12 @@ async def list_verified_questions(
 
 
 @app.post("/v1/questions/{question_id}/answer")
-async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn, request: Request):
+async def answer_verified_question(
+    question_id: UUID,
+    payload: QuestionAnswerIn,
+    request: Request,
+    idempotency_key: UUID = Header(..., alias="Idempotency-Key"),
+):
     """Grade on the server and save an attempt; answer keys never come from the client."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
@@ -587,12 +592,19 @@ async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn,
             question = matches[0]
             is_correct = payload.answer_given == str(question["answer_key"])
 
+            # Ignore duplicate keys so a client retry cannot create a second attempt.
             attempt_response = await client.post(
                 f"{base_url}/rest/v1/attempts",
-                headers={**user_headers, "Content-Type": "application/json", "Prefer": "return=minimal"},
+                params={"on_conflict": "user_id,idempotency_key"},
+                headers={
+                    **user_headers,
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=ignore-duplicates,return=representation",
+                },
                 json={
                     "user_id": user_id,
                     "question_id": question_id,
+                    "idempotency_key": str(idempotency_key),
                     "is_correct": is_correct,
                     "elapsed_ms": payload.elapsed_ms,
                     "confidence": payload.confidence,
@@ -602,6 +614,24 @@ async def answer_verified_question(question_id: UUID, payload: QuestionAnswerIn,
             if attempt_response.status_code in (401, 403):
                 raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
             attempt_response.raise_for_status()
+            saved_rows = attempt_response.json() if attempt_response.content else []
+            if not saved_rows:
+                # A concurrent duplicate request may have won the insert; return its saved result.
+                existing_response = await client.get(
+                    f"{base_url}/rest/v1/attempts",
+                    params={
+                        "select": "idempotency_key,is_correct,answer_given",
+                        "user_id": f"eq.{user_id}",
+                        "idempotency_key": f"eq.{idempotency_key}",
+                        "limit": "1",
+                    },
+                    headers=user_headers,
+                )
+                existing_response.raise_for_status()
+                saved_rows = existing_response.json()
+                if not saved_rows:
+                    raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
+                is_correct = bool(saved_rows[0]["is_correct"])
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
