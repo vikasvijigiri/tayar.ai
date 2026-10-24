@@ -1,7 +1,8 @@
+import logging
 import os
 from time import perf_counter
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -48,15 +49,38 @@ AI_PROVIDER_LATENCY = Histogram(
 )
 
 
+logger = logging.getLogger("tayar.api")
+
+
 @app.middleware("http")
 async def observe_requests(request: Request, call_next):
     started = perf_counter()
+    try:
+        request_id = str(UUID(request.headers.get("X-Request-ID", "")))
+    except (ValueError, AttributeError):
+        request_id = str(uuid4())
+    request.state.request_id = request_id
+
     response = await call_next(request)
+    duration = perf_counter() - started
     route_obj = request.scope.get("route")
     route = getattr(route_obj, "path", "unmatched")
+
     if route != "/metrics":
         REQUEST_COUNT.labels(request.method, route, str(response.status_code)).inc()
-        REQUEST_LATENCY.labels(request.method, route).observe(perf_counter() - started)
+        REQUEST_LATENCY.labels(request.method, route).observe(duration)
+
+    response.headers["X-Request-ID"] = request_id
+    # Cache only non-sensitive, stable configuration. User-specific content and writes
+    # must never be stored by shared proxies or intermediary caches.
+    if route == "/v1/config":
+        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
+    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
+        response.headers["Cache-Control"] = "private, no-store"
+    logger.info(
+        "request_id=%s method=%s route=%s status=%s duration_ms=%.2f",
+        request_id, request.method, route, response.status_code, duration * 1000,
+    )
     return response
 
 
@@ -444,7 +468,8 @@ async def list_verified_questions(
                         "user_id": f"eq.{user_id}",
                     "questions.exam_id": f"eq.{exam_id}",
                         "order": "created_at.desc",
-                        "limit": "1000",
+                        # Bound adaptive history reads; recent performance drives the current practice strategy.
+                        "limit": "200",
                     },
                     headers=admin_headers,
                 )
