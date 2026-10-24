@@ -6,6 +6,10 @@ on:
       - "backend/app/**"
       - "backend/requirements.txt"
       - "backend/supabase/schema.sql"
+      - "backend/supabase/seed_verified_math.sql"
+      - "backend/supabase/seed_verified_math_expansion.sql"
+      - "backend/supabase/seed_verified_math_expansion_12.sql"
+      - "backend/supabase/seed_assertions.sql"
       - "render.yaml"
       - ".github/workflows/deployed-api-smoke.yml"
       - ".github/workflows/quality-gates.yml"
@@ -118,7 +122,20 @@ jobs:
             echo "Verified question service is not ready. Check SUPABASE_SERVICE_ROLE_KEY and database schema."
             exit 1
           fi
-          if grep -q '"answer_key"' /tmp/questions.json; then
-            echo "Security failure: question-list response exposed answer_key."
-            exit 1
-          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/questions.json").read_text())
+          questions = payload.get("questions")
+          total_count = payload.get("total_count")
+          if not isinstance(questions, list) or len(questions) != 1:
+              raise SystemExit("Expected exactly one question in the smoke-test page")
+          if not isinstance(total_count, int) or total_count < 50:
+              raise SystemExit(f"Expected at least 50 live verified questions, got {total_count!r}")
+          if any("answer_key" in question for question in questions):
+              raise SystemExit("Security failure: question-list response exposed answer_key")
+          if not questions[0].get("source_document") or not questions[0].get("source_page"):
+              raise SystemExit("Question response is missing source attribution")
+          print(f"Live question API passed: {total_count} verified questions; answer keys hidden.")
+          PY
