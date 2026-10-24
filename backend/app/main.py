@@ -26,7 +26,7 @@ app.add_middleware(
     allow_origins=origins or ["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID"],
 )
 
 REQUEST_COUNT = Counter(
