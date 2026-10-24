@@ -29,6 +29,7 @@ Endpoints:
 - `GET /v1/questions` — active, source-verified questions only; excludes answer keys
 - `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
 - `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
+- `GET /v1/attempts/history` — paginated, authenticated recent answer history for review; does not expose answer keys
 - `POST /v1/attempts/preview` — development-only validation preview; does not persist
 - `POST /v1/ai/hint` — authenticated hints based only on stored verified solution steps
 
@@ -40,7 +41,7 @@ cd mobile
 npm install
 npx expo start
 ```
-The dashboard checks the configured Render API health endpoint, supports Supabase sign-in/session refresh, loads only published verified questions, submits answers for server-side grading, and refreshes learning statistics after answers. Live Supabase configuration and device-level testing are still required.
+The mobile app uses fixed Home, Practice, Analytics, Revision and Services destinations, with consistent top and bottom navigation and cross-links between related screens. Home shortcuts always expose new/restart test, analytics, weak-topic revision and service checks. Practice batches rotate through the published verified question bank using server-reported counts. Analytics includes accuracy, speed, topic performance and recent saved answer history. The Services page checks liveness, readiness, configuration, Prometheus metrics, question delivery and authenticated analytics/history endpoints. Live Supabase configuration and device-level testing are still required.
 
 ## Monitoring (local Prometheus + Grafana)
 Docker and Docker Compose are required. From the repository root:
