@@ -112,3 +112,27 @@ def test_refresh_fails_closed_without_supabase_configuration(monkeypatch):
 def test_auth_rejects_short_password():
     r = client.post("/v1/auth/signin", json={"email": "test@example.com", "password": "short"})
     assert r.status_code == 422
+
+
+def test_question_list_fails_closed_without_service_role_key(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    r = client.get("/v1/questions")
+    assert r.status_code == 503
+    assert "not configured" in r.json()["detail"]
+
+
+def test_question_answer_requires_bearer_token():
+    r = client.post("/v1/questions/00000000-0000-0000-0000-000000000001/answer", json={
+        "answer_given": "A",
+        "elapsed_ms": 12000
+    })
+    assert r.status_code == 401
+
+
+def test_question_answer_rejects_invalid_elapsed_time():
+    r = client.post("/v1/questions/q1/answer", headers={"Authorization": "Bearer token"}, json={
+        "answer_given": "A",
+        "elapsed_ms": 3600001
+    })
+    assert r.status_code == 422
