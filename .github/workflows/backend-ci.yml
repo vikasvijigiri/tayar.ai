@@ -35,7 +35,7 @@ jobs:
             sleep 2
           done
           docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY); CREATE ROLE authenticated; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';"
-          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/schema.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/schema.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_verified_math.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_verified_math.sql
-          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_verified_math.sql
-          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < backend/supabase/seed_assertions.sql
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_assertions.sql
