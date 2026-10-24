@@ -106,10 +106,5 @@ jobs:
             mobile/android-apk-sha256.txt
           if-no-files-found: error
           retention-days: 7
-      - name: Attach release files to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            mobile/android/app/build/outputs/apk/release/app-release.apk
-            mobile/android/app/build/outputs/bundle/release/app-release.aab
+      # Do not publish a one-time test-signed APK or an unsigned AAB as a production release.
+      # Release publication is intentionally disabled until a persistent signing key is configured.
