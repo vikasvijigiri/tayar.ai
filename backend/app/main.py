@@ -288,3 +288,32 @@ async def auth_signin(payload: AuthCredentials):
         return response.json()
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
+
+
+class RefreshCredentials(BaseModel):
+    refresh_token: str = Field(min_length=10, max_length=4096)
+
+
+@app.post("/v1/auth/refresh")
+async def auth_refresh(payload: RefreshCredentials):
+    """Rotate a Supabase refresh token without exposing provider keys to the app."""
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not base_url or not anon_key:
+        raise HTTPException(status_code=503, detail="Supabase authentication is not configured.")
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            response = await client.post(
+                f"{base_url}/auth/v1/token?grant_type=refresh_token",
+                headers={"apikey": anon_key, "Content-Type": "application/json"},
+                json={"refresh_token": payload.refresh_token},
+            )
+        if response.status_code in (400, 401):
+            raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+        if response.status_code >= 500:
+            raise HTTPException(status_code=502, detail="Authentication provider is temporarily unavailable.")
+        if response.status_code >= 400:
+            raise HTTPException(status_code=401, detail="Unable to refresh session. Please sign in again.")
+        return response.json()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
