@@ -67,6 +67,7 @@ export default function App() {
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(480);
   const questionStartedAt = useRef(Date.now());
+  const sessionDeadline = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -221,14 +222,24 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    sessionDeadline.current = null;
     setRemainingSeconds(480);
   }, [token]);
 
   useEffect(() => {
     if (!token || questions.length === 0) return;
-    const interval = setInterval(() => {
-      setRemainingSeconds(current => Math.max(0, current - 1));
-    }, 1000);
+    if (sessionDeadline.current === null) {
+      sessionDeadline.current = Date.now() + 8 * 60 * 1000;
+      setRemainingSeconds(480);
+    }
+    const tick = () => {
+      const deadline = sessionDeadline.current;
+      if (deadline !== null) {
+        setRemainingSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [token, questions.length]);
 
@@ -396,15 +407,20 @@ export default function App() {
           <Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds == null ? "—" : String(summary.average_time_seconds) + "s"} color={C.blue}/>
         </View>
         <Text style={s.section}>Your next best action</Text>
-        <View style={s.card}><Text style={s.cardTitle}>Establish your baseline</Text><Text style={s.body}>A short diagnostic identifies topics needing attention first. Practice will use verified source material only.</Text></View>
+        <View style={s.card}>
+          <Text style={s.cardTitle}>{summary?.weakest_topic ? `Review ${summary.weakest_topic.topic}` : summary && summary.total_attempts >= 10 ? "Broaden your topic coverage" : "Establish your baseline"}</Text>
+          <Text style={s.body}>{summary?.weakest_topic ? `${summary.weakest_topic.topic} currently has your lowest tracked accuracy (${summary.weakest_topic.accuracy_pct}%). Review the solution steps, then revisit missed questions after a short gap.` : summary && summary.total_attempts >= 10 ? `You have logged ${summary.total_attempts} answers. Keep building accuracy and retention across the verified topic bank.` : "Complete a short timed diagnostic to establish your baseline. Practice uses source-verified questions only."}</Text>
+        </View>
         <Text style={s.section}>Practice workspace</Text>
         <View style={s.card}>
           <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
-          <View style={s.timerRow}>
-            <View><Text style={s.timerCaption}>8-MINUTE PRACTICE SET</Text><Text style={[s.timerValue,remainingSeconds<=60&&{color:C.red}]}>{timerLabel}</Text></View>
-            <TouchableOpacity onPress={() => {setRemainingSeconds(480);setQuestionIndex(0);setSelectedAnswer("");setFeedback(null);setHint("");setQuestionError("");questionStartedAt.current=Date.now();}} style={s.timerReset}><Text style={s.hintButtonText}>Restart set</Text></TouchableOpacity>
-          </View>
-          {remainingSeconds===0&&<Text style={[s.authMessage,{color:C.red}]}>Time is up. Restart the set to continue practicing.</Text>}
+          {questions.length > 0 && <>
+            <View style={s.timerRow}>
+              <View><Text style={s.timerCaption}>8-MINUTE PRACTICE SET</Text><Text style={[s.timerValue,remainingSeconds<=60&&{color:C.red}]}>{timerLabel}</Text></View>
+              <TouchableOpacity onPress={() => {sessionDeadline.current=Date.now()+8*60*1000;setRemainingSeconds(480);setQuestionIndex(0);setSelectedAnswer("");setFeedback(null);setHint("");setQuestionError("");questionStartedAt.current=Date.now();}} style={s.timerReset}><Text style={s.hintButtonText}>Restart set</Text></TouchableOpacity>
+            </View>
+            {remainingSeconds===0&&<Text style={[s.authMessage,{color:C.red}]}>Time is up. Restart the set to continue practicing.</Text>}
+          </>}
           {questionLoading && questions.length === 0 ? <ActivityIndicator color={C.teal} style={{marginTop:18}}/> :
             questionError && questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>{questionError}</Text> :
             questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>No verified active questions are published yet. This workspace will only show questions verified against the uploaded railway PDFs.</Text> :
