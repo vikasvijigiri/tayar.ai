@@ -10,62 +10,77 @@ on:
     paths:
       - "mobile/**"
       - ".github/workflows/android-apk.yml"
+      - ".github/workflows/quality-gates.yml"
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: android-build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
+    name: Build optimized Android APK and AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: mobile/package.json
-      - uses: actions/setup-java@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - run: npm install
+      - name: Install mobile dependencies
+        run: npm install --no-audit --no-fund
       - name: Verify Expo dependency compatibility
         run: npx expo install --check
+      - name: Validate Expo configuration
+        run: npx expo config --type public
       - name: TypeScript type check
         run: npm run typecheck
       - name: Mobile source smoke tests
         run: npm test
-      - run: npx expo prebuild --platform android --non-interactive
-      - name: Build installable release APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleRelease
-      - name: Enforce APK size ceiling and report sizes
+      - name: Generate Android native project
+        run: npx expo prebuild --platform android --non-interactive
+      - name: Build optimized release APK
+        run: cd android && chmod +x gradlew && ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Verify APK and calculate checksum
+        shell: bash
         run: |
+          set -euo pipefail
           apk="android/app/build/outputs/apk/release/app-release.apk"
-          test -f "$apk"
+          test -s "$apk"
           bytes=$(stat -c%s "$apk")
           echo "APK_BYTES=$bytes" >> "$GITHUB_ENV"
           du -h "$apk"
+          sha256sum "$apk" | tee android-apk-sha256.txt
           if [ "$bytes" -gt $((100 * 1024 * 1024)) ]; then
             echo "APK exceeds the 100 MiB product ceiling"
             exit 1
           fi
       - name: Build Play Store Android App Bundle
-        run: cd android && ./gradlew bundleRelease
-      - name: Report Play Store bundle size
-        run: du -h android/app/build/outputs/bundle/release/app-release.aab
-      - uses: actions/upload-artifact@v4
+        run: cd android && ./gradlew --no-daemon bundleRelease
+      - name: Verify Android App Bundle
+        run: test -s android/app/build/outputs/bundle/release/app-release.aab && du -h android/app/build/outputs/bundle/release/app-release.aab
+      - name: Upload APK candidate, AAB and checksum
+        uses: actions/upload-artifact@v4
         with:
-          name: tayar-ai-android-release
+          name: tayar-ai-android-release-candidate
           path: |
             mobile/android/app/build/outputs/apk/release/app-release.apk
             mobile/android/app/build/outputs/bundle/release/app-release.aab
+            mobile/android-apk-sha256.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
       - name: Attach release files to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
