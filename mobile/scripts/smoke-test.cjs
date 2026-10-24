@@ -38,3 +38,9 @@ if (!app.includes('8-MINUTE PRACTICE SET')) throw new Error('Missing timed pract
 if (!app.includes('setRemainingSeconds(480)') || !app.includes('setInterval(')) throw new Error('Missing eight-minute countdown lifecycle');
 if (!app.includes('remainingSeconds===0')) throw new Error('Missing expired-session state');
 console.log('Mobile source smoke tests passed: auth, secure session, API status, verified practice and solution rendering');
+
+if (!app.includes("Continue with Google") || !app.includes("code_challenge_method=s256")) throw new Error("Google OAuth must use PKCE");
+if (!app.includes('authRequest("otp"') || !app.includes('type: "sms"')) throw new Error("SMS OTP send and verification must be implemented");
+if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PASSWORD")) throw new Error("Email/password login must not be shown");
+if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
+console.log("Phone OTP, Google PKCE and minimal login source checks passed");
