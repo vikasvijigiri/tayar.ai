@@ -189,6 +189,7 @@ export default function App() {
     const generation = ++sessionGeneration.current;
     const pendingRefresh = refreshPromise.current;
     if (pendingRefresh) await pendingRefresh;
+    if (generation !== sessionGeneration.current) return;
     try {
       await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
       if (generation !== sessionGeneration.current) return;
@@ -319,6 +320,35 @@ export default function App() {
     }
     ++sessionGeneration.current;
     const inFlightRefresh = refreshPromise.current;
+    // Immediately hide the signed-in UI and clear in-memory user data.
+    setToken(null);
+    setAuthLoading(true);
+    answerRequestKeys.current.clear();
+    hintCache.current.clear();
+    sessionDeadline.current = null;
+    setQuestions([]);
+    setQuestionIndex(0);
+    setTotalQuestionCount(0);
+    setTestOffset(0);
+    setCurrentTestSize(0);
+    setSelectedAnswer("");
+    setFeedback(null);
+    setHint("");
+    setSummary(null);
+    setAttemptHistory([]);
+    setQuestionError("");
+    setAuthMessage("");
+    setAuthError(false);
+    setOtp("");
+    setOtpSent(false);
+    setRemainingSeconds(480);
+    setQuestionLoading(false);
+    setAnswerLoading(false);
+    setHintLoading(false);
+    setHistoryLoading(false);
+    setServiceChecks({});
+    setScreen("Home");
+
     const task = (async () => {
       if (inFlightRefresh) await inFlightRefresh;
       let access: string | null = null;
@@ -334,33 +364,7 @@ export default function App() {
         SecureStore.deleteItemAsync("tayar_refresh_token"),
         SecureStore.deleteItemAsync("tayar_oauth_verifier"),
       ]);
-      // Clear all user-scoped data before another account can render.
-      answerRequestKeys.current.clear();
-      hintCache.current.clear();
-      sessionDeadline.current = null;
-      setToken(null);
-      setQuestions([]);
-      setQuestionIndex(0);
-      setTotalQuestionCount(0);
-      setTestOffset(0);
-      setCurrentTestSize(0);
-      setSelectedAnswer("");
-      setFeedback(null);
-      setHint("");
-      setSummary(null);
-      setAttemptHistory([]);
-      setQuestionError("");
-      setAuthMessage("");
-      setAuthError(false);
-      setOtp("");
-      setOtpSent(false);
-      setRemainingSeconds(480);
-      setQuestionLoading(false);
-      setAnswerLoading(false);
-      setHintLoading(false);
-      setHistoryLoading(false);
-      setServiceChecks({});
-      setScreen("Home");
+      setAuthLoading(false);
     })();
     signOutPromise.current = task;
     try { await task; }
