@@ -53,7 +53,32 @@ jobs:
         run: npx expo prebuild --platform android --non-interactive
       - name: Build optimized release APK
         run: cd android && chmod +x gradlew && ./gradlew --no-daemon --stacktrace assembleRelease
-      - name: Verify APK and calculate checksum
+      - name: Sign sideloadable candidate APK with one-time test key
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          # Ephemeral signing is for private testing only. It is intentionally not
+          # reusable for future upgrades and is never uploaded or committed.
+          keystore="$RUNNER_TEMP/tayar-candidate.jks"
+          signing_password="$(openssl rand -base64 36)"
+          keytool -genkeypair -noprompt \
+            -keystore "$keystore" \
+            -storepass "$signing_password" \
+            -keypass "$signing_password" \
+            -alias tayar-candidate \
+            -keyalg RSA -keysize 3072 -validity 30 \
+            -dname "CN=Tayar.ai Test Candidate, OU=QA, O=Tayar.ai, L=Nizamabad, ST=Telangana, C=IN"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner"
+          "$apksigner" sign --ks "$keystore" --ks-key-alias tayar-candidate \
+            --ks-pass "pass:$signing_password" --key-pass "pass:$signing_password" "$apk"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          rm -f "$keystore"
+          unset signing_password
+
+      - name: Verify signed APK and calculate checksum
         shell: bash
         run: |
           set -euo pipefail
