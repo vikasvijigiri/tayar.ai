@@ -25,6 +25,20 @@ def test_config_cache_policy_and_request_id():
     assert r.headers["X-Request-ID"] == request_id
     assert r.headers["Cache-Control"].startswith("public, max-age=300")
 
+def test_cors_allows_idempotency_and_request_tracing_headers():
+    response = client.options(
+        "/v1/questions/00000000-0000-4000-8000-000000000001/answer",
+        headers={
+            "Origin": "https://app.tayar.ai",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,idempotency-key,x-request-id",
+        },
+    )
+    assert response.status_code == 200
+    allowed = response.headers.get("access-control-allow-headers", "").lower()
+    assert "idempotency-key" in allowed
+    assert "x-request-id" in allowed
+
 
 def test_metrics_endpoint_is_prometheus_compatible():
     client.get("/health")
