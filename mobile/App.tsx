@@ -277,6 +277,14 @@ export default function App() {
         throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
       setFeedback(data as AnswerFeedback);
+      try {
+        const summaryResponse = await fetch(API_BASE_URL + "/v1/attempts/summary", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
+      } catch {
+        // Keep the last known summary if analytics are temporarily unavailable.
+      }
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
     } finally {
@@ -341,7 +349,7 @@ export default function App() {
         <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text>
         <Text style={s.heading}>Make every{"\n"}attempt count.</Text>
         <Text style={s.sub}>RRB NTPC · Adaptive practice</Text>
-        <View style={s.hero}><Text style={s.label}>READINESS INDEX</Text><Text style={s.heroTitle}>{summary && summary.total_attempts > 0 ? "Your baseline is taking shape" : "Building your baseline"}</Text><View style={s.track}><View style={s.fill}/></View><Text style={s.small}>Complete verified practice sessions to unlock personalised insights.</Text></View>
+        <View style={s.hero}><Text style={s.label}>PRACTICE BASELINE</Text><Text style={s.heroTitle}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded` : "Your first practice session starts the baseline"}</Text><View style={s.track}><View style={[s.fill,{width:percentWidth(summary ? Math.min(100, summary.total_attempts * 2) : 0)}]}/></View><Text style={s.small}>Progress indicator: completed answers, capped at 50 attempts. It is not an exam-readiness prediction.</Text></View>
         <Text style={s.section}>Your learning signals</Text>
         <View style={s.grid}>
           <Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/>
@@ -415,7 +423,7 @@ function ServiceStatus({status}:{status:ApiStatus}) {
   return <View style={s.statusRow}><View style={[s.statusDot,{backgroundColor:status==="online"?C.teal:status==="offline"?C.red:C.amber}]}/><Text style={s.statusText}>{status==="online"?"Learning services connected":status==="offline"?"Service unavailable · retry later":"Connecting to learning services…"}</Text></View>;
 }
 function Metric({label,value,color}:{label:string,value:string,color:string}) {
-  return <View style={s.metric}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text><Text style={s.small}>Awaiting practice</Text></View>;
+  return <View style={s.metric}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text></View>;
 }
 
 const s=StyleSheet.create({
