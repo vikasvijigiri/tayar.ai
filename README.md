@@ -25,7 +25,7 @@ Endpoints:
 - `GET /health` — process health
 - `GET /v1/config` — supported exam and adaptive metrics
 - `GET /metrics` — Prometheus request count and latency metrics
-- `POST /v1/auth/signup`, `POST /v1/auth/signin`, `POST /v1/auth/refresh` — Supabase email authentication/session endpoints
+- `POST /v1/auth/refresh` — server-side Supabase refresh-token exchange; app sign-in is SMS OTP and Google OAuth only
 - `GET /v1/questions` — active, source-verified questions only; excludes answer keys
 - `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
 - `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
@@ -41,7 +41,7 @@ cd mobile
 npm install
 npx expo start
 ```
-The mobile app uses fixed Home, Practice, Analytics, Revision and Services destinations, with consistent top and bottom navigation and cross-links between related screens. Home shortcuts always expose new/restart test, analytics, weak-topic revision and service checks. Practice batches rotate through the published verified question bank using server-reported counts. Analytics includes accuracy, speed, topic performance and recent saved answer history. The Services page checks liveness, readiness, configuration, Prometheus metrics, question delivery and authenticated analytics/history endpoints. Live Supabase configuration and device-level testing are still required.
+The mobile app uses a minimal SMS OTP / Google OAuth sign-in screen, Expo SecureStore for access/refresh tokens, fixed Home, Practice, Analytics, Revision and Services destinations, and cross-links between related screens. The eight-minute timer starts only when the learner enters Practice. Practice batches rotate through the published verified question bank using server-reported counts. Analytics includes accuracy, speed, topic performance and recent saved answer history. The Services page checks liveness, readiness, configuration, Prometheus metrics, question delivery and authenticated analytics/history endpoints. Real SMS delivery, Google OAuth, deep-link callback and physical-device testing are still required.
 
 ## Monitoring (local Prometheus + Grafana)
 Docker and Docker Compose are required. From the repository root:
@@ -57,6 +57,9 @@ docker compose -f monitoring/docker-compose.yml up -d
 The provisioned Grafana dashboard is named **Tayar.ai API Reliability**. Prometheus scrapes the public Render `/metrics` endpoint every 30 seconds. A metric chart may remain empty until Prometheus can reach the endpoint and the API receives requests. The endpoint is currently public and exposes aggregate operational metrics only; do not add personal data, tokens, prompts or secrets to metrics labels.
 
 For a hosted Grafana/Prometheus setup, deploy the same scrape configuration to a reachable Prometheus instance and connect Grafana to that instance. This repository contains configuration; it does not itself provision a hosted Grafana account.
+
+## Authentication release configuration
+The app exposes only SMS OTP and Google OAuth controls. In Supabase Auth settings, enable Phone and Google providers, configure an SMS provider and Google client credentials, disable Email/password sign-up/sign-in if the project policy is strictly phone/Google only, and add `tayarai://auth/callback` to Additional Redirect URLs. Also configure Google's authorized redirect URI to the Supabase Auth callback URL shown in the dashboard. Provider credentials must remain in Supabase, not in the app. The public anon/publishable key may be returned by `/v1/config`; the service-role key must never be returned there.
 
 ## Deploy
 Render uses `render.yaml`. Configure the environment variables in the Render dashboard after linking the repository:
@@ -74,7 +77,8 @@ For a persistent production APK signature, create and back up a release keystore
 
 ## Current limitations
 - The reviewed bank now has 50 source-verified questions across twelve quantitative topics. This is a smoke-test/early-access bank, not comprehensive coverage of the full RRB NTPC syllabus; continue expanding from the uploaded source PDFs before a broad public launch.
-- Sign-up/sign-in UI, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented but require live Supabase integration tests before production use.
+- SMS OTP and Google OAuth code paths, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented; real SMS/Google provider configuration and end-to-end physical-device tests remain mandatory release gates.
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
+- The current Android APK is a one-time QA-signed candidate unless all persistent signing secrets are configured. It is not suitable for reliable in-place production upgrades.
 - Free-tier quotas, cold starts and usage limits may affect availability.
