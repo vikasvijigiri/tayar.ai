@@ -440,8 +440,9 @@ async def list_verified_questions(
                 history_response = await client.get(
                     f"{base_url}/rest/v1/attempts",
                     params={
-                        "select": "is_correct,elapsed_ms,created_at,question_id,questions(topic_id,topics(name,slug))",
+                        "select": "is_correct,elapsed_ms,created_at,question_id,questions!inner(exam_id,topic_id,topics(name,slug))",
                         "user_id": f"eq.{user_id}",
+                    "questions.exam_id": f"eq.{exam_id}",
                         "order": "created_at.desc",
                         "limit": "1000",
                     },
@@ -665,7 +666,7 @@ def summarize_attempt_rows(rows: list[dict]) -> dict:
 
 
 @app.get("/v1/attempts/summary")
-async def attempts_summary(request: Request):
+async def attempts_summary(request: Request, exam_id: str = "rrb_ntpc"):
     """Compute user-only accuracy, speed and topic signals after verifying the Supabase session."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
@@ -691,8 +692,9 @@ async def attempts_summary(request: Request):
             response = await client.get(
                 f"{base_url}/rest/v1/attempts",
                 params={
-                    "select": "is_correct,elapsed_ms,created_at,question_id,questions(topic_id,topics(name,slug))",
+                    "select": "is_correct,elapsed_ms,created_at,question_id,questions!inner(exam_id,topic_id,topics(name,slug))",
                     "user_id": f"eq.{user_id}",
+                    "questions.exam_id": f"eq.{exam_id}",
                     "order": "created_at.desc",
                     "limit": "1000",
                 },
@@ -711,4 +713,6 @@ async def attempts_summary(request: Request):
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Attempt history service is temporarily unreachable.")
 
-    return summarize_attempt_rows(rows)
+    summary = summarize_attempt_rows(rows)
+    summary["exam_id"] = exam_id
+    return summary
