@@ -530,7 +530,7 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
+      const response = await (token ? authenticatedFetch(API_BASE_URL + path, { headers: { Authorization: "Bearer " + token } }, 12000) : apiFetch(API_BASE_URL + path, {}, 12000));
       const ok = response.ok;
       const notReady = path === "/health/ready" && response.status === 503;
       setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
