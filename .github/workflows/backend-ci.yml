@@ -41,7 +41,7 @@ jobs:
             if [ "$attempt" -eq 30 ]; then docker logs tayar-seed-test; exit 1; fi
             sleep 2
           done
-          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY); CREATE ROLE authenticated; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';"
+          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY); CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';"
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/schema.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_verified_math.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_verified_math.sql
