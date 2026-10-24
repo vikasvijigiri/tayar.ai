@@ -23,4 +23,8 @@ The mobile app intentionally supports **SMS OTP and Google OAuth only**. Email/p
 
 ## Database hardening applied
 
+- Attempts are graded using the server-side answer key and inserted using the backend service role only. Direct `INSERT` privileges and the client insert RLS policy are revoked; users can still read only their own attempts.
+- Idempotency keys are bound to the question, answer, elapsed time, and confidence to reject mismatched retries.
+- The per-key AI hint lock registry is bounded to avoid retaining an unbounded map of unique keys.
+
 The project function `public.rls_auto_enable()` is an event-trigger function. Execute permission was revoked from `PUBLIC`, `anon`, and `authenticated`; verification confirmed the event trigger remains attached and those roles can no longer execute the function directly.
