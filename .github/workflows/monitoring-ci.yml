@@ -1,0 +1,53 @@
+name: Monitoring Config CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: monitoring-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate monitoring configuration and dashboard
+        run: |
+          python -m pip install --disable-pip-version-check pyyaml
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import yaml
+
+          root = Path(".")
+          prometheus = yaml.safe_load((root / "monitoring/prometheus.yml").read_text())
+          compose = yaml.safe_load((root / "monitoring/docker-compose.yml").read_text())
+          blackbox = yaml.safe_load((root / "monitoring/blackbox.yml").read_text())
+          datasource = yaml.safe_load((root / "monitoring/grafana/provisioning/datasources/prometheus.yml").read_text())
+          provider = yaml.safe_load((root / "monitoring/grafana/provisioning/dashboards/provider.yml").read_text())
+          dashboard = json.loads((root / "monitoring/grafana/tayar-api-reliability.json").read_text())
+
+          jobs = {job["job_name"]: job for job in prometheus["scrape_configs"]}
+          assert "tayar-ai-api-metrics" in jobs
+          assert jobs["tayar-ai-api-metrics"]["metrics_path"] == "/metrics"
+          assert "tayar-ai-api.onrender.com" in jobs["tayar-ai-api-metrics"]["static_configs"][0]["targets"]
+          assert "tayar-ai-api-liveness" in jobs
+          assert "tayar-ai-api-readiness" in jobs
+          assert "blackbox-exporter" in compose["services"]
+          assert "prometheus" in compose["services"] and "grafana" in compose["services"]
+          assert "http_2xx" in blackbox["modules"]
+          assert datasource["datasources"][0]["uid"] == "prometheus"
+          assert provider["providers"]
+          assert dashboard["uid"] == "tayar-api-reliability"
+          assert len(dashboard["panels"]) >= 6
+          all_queries = " ".join(target.get("expr", "") for panel in dashboard["panels"] for target in panel.get("targets", []))
+          assert "tayar_http_requests_total" in all_queries
+          assert "tayar_http_request_duration_seconds_bucket" in all_queries
+          assert "probe_success" in all_queries
+          print("Monitoring config valid: Prometheus scrape jobs, Blackbox probes, Grafana provisioning and dashboard queries.")
+          PY
