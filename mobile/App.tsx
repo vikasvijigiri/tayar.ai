@@ -318,6 +318,7 @@ export default function App() {
           <Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/>
           <Metric label="WEAKNESS RADAR" value="Not enough data" color={C.amber}/>
           <Metric label="ATTEMPTS LOGGED" value={summary ? String(summary.total_attempts) : "—"} color={C.teal}/>
+          <Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds == null ? "—" : String(summary.average_time_seconds) + "s"} color={C.blue}/>
         </View>
         <Text style={s.section}>Your next best action</Text>
         <View style={s.card}><Text style={s.cardTitle}>Establish your baseline</Text><Text style={s.body}>A short diagnostic identifies topics needing attention first. Practice will use verified source material only.</Text></View>
