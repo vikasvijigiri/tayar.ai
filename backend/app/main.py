@@ -396,64 +396,8 @@ async def get_hint(payload: HintIn, request: Request):
         raise HTTPException(status_code=503, detail="No AI provider configured.")
 
 
-class AuthCredentials(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=8, max_length=128)
-
-
 class RefreshCredentials(BaseModel):
-    refresh_token: str = Field(min_length=10, max_length=4096)
-
-
-@app.post("/v1/auth/signup")
-async def auth_signup(payload: AuthCredentials):
-    """Create a Supabase Auth account; confirmation requirements follow project settings."""
-    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
-    if not base_url or not anon_key:
-        raise HTTPException(status_code=503, detail="Supabase authentication is not configured.")
-    try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            response = await client.post(
-                f"{base_url}/auth/v1/signup",
-                headers={"apikey": anon_key, "Content-Type": "application/json"},
-                json={"email": payload.email, "password": payload.password},
-            )
-        if response.status_code >= 500:
-            raise HTTPException(status_code=502, detail="Authentication provider is temporarily unavailable.")
-        if response.status_code >= 400:
-            raise HTTPException(status_code=400, detail="Sign-up failed. Check the email, password and account requirements.")
-        return response.json()
-    except httpx.HTTPError:
-        raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
-
-
-@app.post("/v1/auth/signin")
-async def auth_signin(payload: AuthCredentials):
-    """Exchange email/password for a Supabase user session."""
-    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
-    if not base_url or not anon_key:
-        raise HTTPException(status_code=503, detail="Supabase authentication is not configured.")
-    try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            response = await client.post(
-                f"{base_url}/auth/v1/token?grant_type=password",
-                headers={"apikey": anon_key, "Content-Type": "application/json"},
-                json={"email": payload.email, "password": payload.password},
-            )
-        if response.status_code == 400 or response.status_code == 401:
-            raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-        if response.status_code >= 500:
-            raise HTTPException(status_code=502, detail="Authentication provider is temporarily unavailable.")
-        if response.status_code >= 400:
-            raise HTTPException(status_code=400, detail="Sign-in failed.")
-        return response.json()
-    except httpx.HTTPError:
-        raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
-
-
-@app.post("/v1/auth/refresh")
+    refresh_token: str = Field(min_length=10, max_length=4096)@app.post("/v1/auth/refresh")
 async def auth_refresh(payload: RefreshCredentials):
     """Rotate a Supabase refresh token without exposing provider keys to the app."""
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
