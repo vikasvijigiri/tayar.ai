@@ -62,6 +62,9 @@ export default function App() {
   const [authError, setAuthError] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [totalQuestionCount, setTotalQuestionCount] = useState(0);
+  const [testOffset, setTestOffset] = useState(0);
+  const [currentTestSize, setCurrentTestSize] = useState(0);
   const [questionLoading, setQuestionLoading] = useState(false);
   const [questionError, setQuestionError] = useState("");
   const [selectedAnswer, setSelectedAnswer] = useState("");
@@ -200,6 +203,9 @@ export default function App() {
         if (active) {
           setQuestions(Array.isArray(data.questions) ? data.questions : []);
           setQuestionIndex(0);
+          setTestOffset(0);
+          setCurrentTestSize(Array.isArray(data.questions) ? data.questions.length : 0);
+          setTotalQuestionCount(Number(data.total_count) || (Array.isArray(data.questions) ? data.questions.length : 0));
           setQuestionStrategy(data.strategy || "baseline");
           setFocusTopic(data.focus_topic || null);
         }
@@ -409,6 +415,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
+      setTotalQuestionCount(Number(data.total_count) || Math.max(totalQuestionCount, questions.length + next.length));
       setQuestionStrategy(data.strategy || "baseline");
       setFocusTopic(data.focus_topic || null);
       if (next.length) {
@@ -428,11 +435,16 @@ export default function App() {
     if (!token || questionLoading) return;
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
+      const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
-      setQuestions(Array.isArray(data.questions) ? data.questions : []); setQuestionIndex(0);
+      const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
+      setQuestions(nextQuestions); setQuestionIndex(0);
+      setTestOffset(nextOffset); setCurrentTestSize(nextQuestions.length);
+      setTotalQuestionCount(Number(data.total_count) || Math.max(totalQuestionCount, nextOffset + nextQuestions.length));
       setQuestionStrategy(data.strategy || "baseline"); setFocusTopic(data.focus_topic || null);
+      if (nextQuestions.length === 0) throw new Error("No additional verified questions are available in this test cycle.");
       setSelectedAnswer(""); setFeedback(null); setHint(""); sessionDeadline.current = Date.now() + 480000;
       setRemainingSeconds(480); questionStartedAt.current = Date.now();
     } catch (error) { setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
