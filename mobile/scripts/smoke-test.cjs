@@ -71,3 +71,7 @@ if (!app.includes("answerRequestKeys.current.clear()") || !app.includes("hintCac
 if (!app.includes("(testOffset + questions.length) % totalQuestionCount")) {
   throw new Error("Load-more pagination must respect the active test offset");
 }
+
+if (!app.includes('if (signOutPromise.current) return { status: "invalid" }') || !app.includes("Sign-out is still finishing")) {
+  throw new Error("Token refresh/session persistence must not race with logout");
+}
