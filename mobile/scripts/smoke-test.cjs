@@ -24,6 +24,14 @@ if (!app.includes('topic_performance')) throw new Error('Missing topic mastery d
 if (!app.includes('repeat_accuracy_pct')) throw new Error('Missing repeat accuracy data binding');
 if (!app.includes('solution_steps')) throw new Error('Missing solution display');
 if (!app.includes('/v1/ai/hint')) throw new Error('Missing authenticated AI hint integration');
+if (!app.includes('type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services"')) throw new Error('Missing predictable static screen navigation');
+for (const screen of ['Home','Practice','Analytics','Revision','Services']) {
+  if (!app.includes('"' + screen + '"')) throw new Error('Missing navigation destination: ' + screen);
+}
+if (!app.includes('Start a new test / restart set')) throw new Error('Missing restart/new-test action');
+if (!app.includes('/health/ready') || !app.includes('/v1/config') || !app.includes('/metrics')) throw new Error('Missing service centre endpoint checks');
+if (!app.includes('checkAllServices')) throw new Error('Missing bulk endpoint health check action');
+if (!app.includes('Always-available shortcuts')) throw new Error('Missing persistent home shortcuts');
 if (!app.includes('8-MINUTE PRACTICE SET')) throw new Error('Missing timed practice session UI');
 if (!app.includes('setRemainingSeconds(480)') || !app.includes('setInterval(')) throw new Error('Missing eight-minute countdown lifecycle');
 if (!app.includes('remainingSeconds===0')) throw new Error('Missing expired-session state');
