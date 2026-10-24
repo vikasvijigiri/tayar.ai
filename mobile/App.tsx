@@ -310,7 +310,9 @@ export default function App() {
       if (refreshed.permanent) await signOut();
       return response;
     }
-    return apiFetch(url, withToken(refreshed.accessToken), timeoutMs);
+    const retried = await apiFetch(url, withToken(refreshed.accessToken), timeoutMs);
+    if (retried.status === 401) await signOut();
+    return retried;
   };
 
   useEffect(() => {
