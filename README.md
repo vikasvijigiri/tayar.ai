@@ -25,9 +25,12 @@ Endpoints:
 - `GET /health` — process health
 - `GET /v1/config` — supported exam and adaptive metrics
 - `GET /metrics` — Prometheus request count and latency metrics
+- `POST /v1/auth/signup`, `POST /v1/auth/signin`, `POST /v1/auth/refresh` — Supabase email authentication/session endpoints
+- `GET /v1/questions` — active, source-verified questions only; excludes answer keys
+- `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
+- `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
 - `POST /v1/attempts/preview` — development-only validation preview; does not persist
-- `POST /v1/attempts` — persists an attempt after validating the user's Supabase bearer token and using their JWT for database RLS
-- `POST /v1/ai/hint` — optional hint generation using configured AI providers
+- `POST /v1/ai/hint` — authenticated hints based only on stored verified solution steps
 
 Open `http://127.0.0.1:8000/docs` for the OpenAPI schema.
 
