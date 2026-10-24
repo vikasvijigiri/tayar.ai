@@ -2,6 +2,12 @@ name: Deployed API Smoke Tests
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/app/**"
+      - "backend/requirements.txt"
+      - "backend/supabase/schema.sql"
+      - "render.yaml"
+      - ".github/workflows/deployed-api-smoke.yml"
   workflow_dispatch:
 permissions:
   contents: read
