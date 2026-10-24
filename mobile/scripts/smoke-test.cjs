@@ -13,6 +13,8 @@ if (!app.includes('/v1/questions?exam_id=rrb_ntpc')) throw new Error('Missing ve
 if (!app.includes('/answer')) throw new Error('Missing server-side answer submission integration');
 if (!app.includes('/v1/attempts/summary')) throw new Error('Missing authenticated performance summary integration');
 if (!app.includes('overall_accuracy_pct')) throw new Error('Missing real accuracy data binding');
+if (!app.includes('topic_performance')) throw new Error('Missing topic mastery data binding');
+if (!app.includes('repeat_accuracy_pct')) throw new Error('Missing repeat accuracy data binding');
 if (!app.includes('solution_steps')) throw new Error('Missing solution display');
 if (!app.includes('/v1/ai/hint')) throw new Error('Missing authenticated AI hint integration');
 console.log('Mobile source smoke tests passed: auth, secure session, API status, verified practice and solution rendering');
