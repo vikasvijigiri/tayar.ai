@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+const API_BASE_URL = "https://tayar-ai-api.onrender.com";
 const C={bg:"#0A1020",panel:"#121C30",panel2:"#17243B",text:"#F4F7FC",muted:"#9AAAC3",teal:"#53E0C1",blue:"#85A9FF",amber:"#FFC76A",border:"#263650"};
 export default function App(){
  const [tab,setTab]=useState("Today");
+ const [apiStatus,setApiStatus]=useState<"checking"|"online"|"offline">("checking");
+ useEffect(()=>{let active=true; const check=async()=>{try{const response=await fetch(`${API_BASE_URL}/health`);if(!response.ok)throw new Error("API health check failed");const data=await response.json();if(data.status!=="ok")throw new Error("Unexpected health response");if(active)setApiStatus("online");}catch{if(active)setApiStatus("offline");}};check();return()=>{active=false;};},[]);
  const lastFiveAccuracy="—"; const overallAccuracy="—";
  return <SafeAreaView style={s.safe}><StatusBar barStyle="light-content" backgroundColor={C.bg}/><ScrollView contentContainerStyle={s.page}>
   <View style={s.top}><View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View><View style={s.avatar}><Text style={{color:C.teal,fontWeight:"800"}}>NT</Text></View></View>
+  <View style={s.statusRow}><View style={[s.statusDot,{backgroundColor:apiStatus==="online"?C.teal:apiStatus==="offline"? "#FF7D86":C.amber}]}/><Text style={s.statusText}>{apiStatus==="online"?"Learning services connected":apiStatus==="offline"?"Service unavailable · retry later":"Connecting to learning services…"}</Text></View>
   <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text><Text style={s.heading}>Make every{"\n"}attempt count.</Text><Text style={s.sub}>RRB NTPC · Adaptive practice</Text>
   <View style={s.hero}><Text style={s.label}>READINESS INDEX</Text><Text style={s.heroTitle}>Building your baseline</Text><View style={s.track}><View style={s.fill}/></View><Text style={s.small}>Complete verified practice sessions to unlock personalised insights.</Text></View>
   <Text style={s.section}>Your learning signals</Text><View style={s.grid}><Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/><Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/><Metric label="WEAKNESS RADAR" value="Not enough data" color={C.amber}/><Metric label="MOMENTUM" value="Awaiting attempts" color={C.teal}/></View>
@@ -18,7 +22,7 @@ export default function App(){
 }
 function Metric({label,value,color}:{label:string,value:string,color:string}){return <View style={s.metric}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text><Text style={s.small}>Awaiting practice</Text></View>}
 const s=StyleSheet.create({
- safe:{flex:1,backgroundColor:C.bg},page:{paddingHorizontal:20,paddingTop:18,paddingBottom:30},top:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:28},
+ safe:{flex:1,backgroundColor:C.bg},statusRow:{flexDirection:"row",alignItems:"center",marginBottom:16},statusDot:{width:7,height:7,borderRadius:4,marginRight:8},statusText:{color:C.muted,fontSize:11},page:{paddingHorizontal:20,paddingTop:18,paddingBottom:30},top:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:28},
  brand:{color:C.text,fontSize:22,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},avatar:{width:42,height:42,borderRadius:15,backgroundColor:C.panel2,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:C.border},
  eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},heading:{color:C.text,fontSize:35,lineHeight:40,fontWeight:"800",letterSpacing:-1},sub:{color:C.muted,fontSize:14,marginTop:10,marginBottom:22},
  hero:{backgroundColor:C.panel,borderRadius:22,padding:18,borderWidth:1,borderColor:C.border,marginBottom:26},label:{color:C.muted,fontSize:10,letterSpacing:1.2,fontWeight:"800"},heroTitle:{color:C.text,fontSize:18,fontWeight:"700",marginTop:8},track:{height:6,borderRadius:8,backgroundColor:"#263650",marginTop:20,marginBottom:12,overflow:"hidden"},fill:{height:6,width:"8%",backgroundColor:C.teal},small:{color:C.muted,fontSize:11,lineHeight:16},section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:13,marginTop:2},
