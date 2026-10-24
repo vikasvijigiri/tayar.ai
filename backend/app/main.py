@@ -505,12 +505,17 @@ async def list_verified_questions(
             response = await client.get(
                 f"{base_url}/rest/v1/questions",
                 params=params,
-                headers=admin_headers,
+                headers={**admin_headers, "Prefer": "count=exact"},
             )
             if response.status_code >= 500:
                 raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
             response.raise_for_status()
             questions = response.json()
+            content_range = getattr(response, "headers", {}).get("content-range", "")
+            try:
+                total_count = int(content_range.rsplit("/", 1)[1])
+            except (IndexError, ValueError):
+                total_count = offset + len(questions)
 
         public_fields = (
             "id", "exam_id", "topic_id", "question_text", "options",
@@ -525,6 +530,7 @@ async def list_verified_questions(
             "questions": safe_questions,
             "limit": limit,
             "offset": offset,
+            "total_count": total_count,
             "strategy": strategy,
             "strategy_reason": strategy_reason,
             "focus_topic": focus_topic,
