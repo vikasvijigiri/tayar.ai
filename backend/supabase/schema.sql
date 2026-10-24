@@ -78,7 +78,7 @@ begin
         raise log 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
       end;
     else
-      raise log 'rls_auto_enable: skip % (not in enforced schema)', cmd.object_identity;
+      raise log 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
     end if;
   end loop;
 end;
