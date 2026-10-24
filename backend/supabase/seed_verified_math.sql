@@ -15,12 +15,57 @@ values (
 on conflict (exam_id, slug) do update
 set name = excluded.name;
 
+insert into public.topics (id, exam_id, name, slug)
+values
+  ('a1000000-0000-4000-8000-000000000002','rrb_ntpc','L.C.M and H.C.F','lcm-hcf'),
+  ('a1000000-0000-4000-8000-000000000003','rrb_ntpc','Percentage','percentage'),
+  ('a1000000-0000-4000-8000-000000000004','rrb_ntpc','Time and Work','time-and-work'),
+  ('a1000000-0000-4000-8000-000000000005','rrb_ntpc','Pipe and Cistern','pipe-and-cistern')
+on conflict (exam_id, slug) do update
+set name = excluded.name;
+
 insert into public.questions (
   id, exam_id, topic_id, question_text, options, answer_key,
   solution_steps, source_document, source_page, source_verified,
   difficulty, syllabus_weight, active
 )
 values
+(
+ 'a2000000-0000-4000-8000-000000000001','rrb_ntpc',
+ (select id from public.topics where exam_id='rrb_ntpc' and slug='lcm-hcf'),
+ 'The HCF of two numbers is 9 and the product of the two numbers is 8100. How many pairs of numbers satisfy the given conditions?',
+ '["A) 4","B) 2","C) 5","D) 3"]'::jsonb,'B',
+ '["Let the two numbers be 9a and 9b, where a and b are coprime.","Their product gives 81ab=8100, so ab=100.","The coprime factor pairs of 100 are (1,100) and (4,25), giving 2 pairs."]'::jsonb,
+ 'RRB_NTPC_UG_2025_Exam_Maths_Questions_in_English_Hard_To_Easy_Chapterwise.pdf',
+ 'PDF page 32 (printed page 31), Q283; 19/08/2025 Shift-2',true,3,0.9,true
+),
+(
+ 'a2000000-0000-4000-8000-000000000002','rrb_ntpc',
+ (select id from public.topics where exam_id='rrb_ntpc' and slug='percentage'),
+ 'The population of a district is 374000, out of which 170000 are males. 78% of the population is literate. If 72% males are literate, then what percentage of females are literate?',
+ '["A) 81%","B) 85%","C) 83%","D) 80%"]'::jsonb,'C',
+ '["Total literate people = 374000 × 78% = 291720.","Literate males = 170000 × 72% = 122400, so literate females = 291720 − 122400 = 169320.","Females = 374000 − 170000 = 204000; 169320 ÷ 204000 × 100 = 83%."]'::jsonb,
+ 'RRB_NTPC_UG_2025_Exam_Maths_Questions_in_English_Hard_To_Easy_Chapterwise.pdf',
+ 'PDF page 158 (printed page 157), Q1295; 28/08/2025 Shift-2',true,3,0.9,true
+),
+(
+ 'a2000000-0000-4000-8000-000000000003','rrb_ntpc',
+ (select id from public.topics where exam_id='rrb_ntpc' and slug='time-and-work'),
+ '2 men can complete a piece of work in 18 days, while 4 women can do it in 6 days. In how many days can 6 women and 9 men complete this work?',
+ '["A) 1 day","B) 3 days","C) 4 days","D) 2 days"]'::jsonb,'D',
+ '["One man’s rate is 1/(2×18) = 1/36 of the work per day.","One woman’s rate is 1/(4×6) = 1/24 of the work per day.","9 men work at 9/36 = 1/4 per day; 6 women work at 6/24 = 1/4 per day. Combined rate is 1/2, so the work takes 2 days."]'::jsonb,
+ 'RRB_NTPC_UG_2025_Exam_Maths_Questions_in_English_Hard_To_Easy_Chapterwise.pdf',
+ 'PDF page 139 (printed page 138), Q1173; 22/08/2025 Shift-2',true,2,0.9,true
+),
+(
+ 'a2000000-0000-4000-8000-000000000004','rrb_ntpc',
+ (select id from public.topics where exam_id='rrb_ntpc' and slug='pipe-and-cistern'),
+ 'Two pipes can fill a cistern, individually, in 99 min and 90 min, respectively. There is a pipe located at the bottom of the cistern to empty it. If all the three pipes are opened simultaneously, then the empty cistern gets filled in 50 min. How long will the pipe at the bottom of the tank take to empty the completely filled cistern if no other pipe is then open?',
+ '["A) 841 min","B) 825 min","C) 822 min","D) 815 min"]'::jsonb,'B',
+ '["The two inlet pipes fill at 1/99 + 1/90 = 7/330 of the cistern per minute.","With the drain open, the net filling rate is 1/50 per minute.","Drain rate = 7/330 − 1/50 = 1/825 of the cistern per minute, so the drain alone empties it in 825 minutes."]'::jsonb,
+ 'RRB NTPC CBT-2 2024-25 (Undergraduate level)  English.pdf',
+ 'PDF page 1, Q4; Test Date 20/12/2025',true,3,1.0,true
+),
 (
  'b1000000-0000-4000-8000-000000000001','rrb_ntpc',
  (select id from public.topics where exam_id='rrb_ntpc' and slug='number-system'),
