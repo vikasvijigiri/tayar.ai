@@ -233,3 +233,115 @@ def test_attempt_summary_handles_no_attempts():
     assert summary["average_time_seconds"] is None
     assert summary["repeat_accuracy_pct"] is None
     assert summary["weakest_topic"] is None
+
+
+def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    calls = {"get": [], "post": []}
+
+    class FakeResponse:
+        def __init__(self, status_code=200, body=None):
+            self.status_code = status_code
+            self._body = body or {}
+
+        def json(self):
+            return self._body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import httpx
+                request = httpx.Request("GET", "https://supabase.example/test")
+                response = httpx.Response(self.status_code, request=request)
+                raise httpx.HTTPStatusError("fake error", request=request, response=response)
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            calls["get"].append({"url": url, "params": params, "headers": headers})
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse(body={"id": "user-123"})
+            assert params["select"] == "id,answer_key,solution_steps,source_document,source_page,active,source_verified"
+            assert params["source_verified"] == "eq.true"
+            assert headers["Authorization"] == "Bearer server-only-test-key"
+            return FakeResponse(body=[{
+                "id": "00000000-0000-0000-0000-000000000001",
+                "answer_key": "B",
+                "solution_steps": ["Use the verified method", "Calculate the result"],
+                "source_document": "verified.pdf",
+                "source_page": "12",
+                "active": True,
+                "source_verified": True,
+            }])
+
+        async def post(self, url, headers=None, json=None):
+            calls["post"].append({"url": url, "headers": headers, "json": json})
+            return FakeResponse(status_code=201)
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
+        headers={"Authorization": "Bearer user-token"},
+        json={"answer_given": "B", "elapsed_ms": 4200, "confidence": 4},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is True
+    assert body["is_correct"] is True
+    assert body["answer_key"] == "B"
+    assert body["source_document"] == "verified.pdf"
+    assert calls["post"][0]["json"]["user_id"] == "user-123"
+    assert calls["post"][0]["json"]["is_correct"] is True
+    assert calls["post"][0]["headers"]["Authorization"] == "Bearer user-token"
+    assert "answer_key" not in calls["post"][0]["json"]
+
+
+def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            return FakeResponse([])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
+        headers={"Authorization": "Bearer user-token"},
+        json={"answer_given": "A", "elapsed_ms": 1000},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Verified question not found."
