@@ -59,9 +59,7 @@ class AttemptIn(BaseModel):
 
 
 class HintIn(BaseModel):
-    question_id: str
-    topic: str
-    stored_solution_steps: list[str] = Field(default_factory=list, max_length=12)
+    question_id: UUID
     hint_level: Literal["nudge", "method", "steps"] = "nudge"
 
 
@@ -148,18 +146,63 @@ async def provider_completion(provider: str, system_prompt: str, user_prompt: st
 
 @app.post("/v1/ai/hint")
 async def get_hint(payload: HintIn):
+    """Generate a hint only from the verified solution stored server-side."""
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not service_key:
+        raise HTTPException(status_code=503, detail="Verified solution service is not configured.")
+
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            question_response = await client.get(
+                f"{base_url}/rest/v1/questions",
+                params={
+                    "select": "solution_steps,topic_id",
+                    "id": f"eq.{payload.question_id}",
+                    "active": "eq.true",
+                    "source_verified": "eq.true",
+                    "limit": "1",
+                },
+                headers=headers,
+            )
+            question_response.raise_for_status()
+            matches = question_response.json()
+            if not matches:
+                raise HTTPException(status_code=404, detail="Verified question not found.")
+            question = matches[0]
+            steps = question.get("solution_steps") or []
+            if not steps:
+                return {"hint": "A verified solution is not available for this question yet.", "provider": None}
+            topic = str(question.get("topic_id") or "RRB NTPC")
+            topic_id = question.get("topic_id")
+            if topic_id:
+                topic_response = await client.get(
+                    f"{base_url}/rest/v1/topics",
+                    params={"select": "name", "id": f"eq.{topic_id}", "limit": "1"},
+                    headers=headers,
+                )
+                if topic_response.is_success and topic_response.json():
+                    topic = topic_response.json()[0].get("name") or topic
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="Verified solution lookup failed.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Verified solution service is temporarily unreachable.")
+
     order = [
         p.strip().lower()
         for p in os.getenv("AI_PROVIDER_ORDER", "groq,gemini,cerebras").split(",")
     ]
     system = (
         "You are a careful exam tutor. Never invent or change an answer key. "
-        "Use only supplied stored solution steps. If insufficient, say a verified solution is needed. "
-        "Be concise."
+        "Use only the supplied server-stored verified solution steps. If insufficient, say a verified solution is needed. "
+        "Do not state an answer key unless it is explicitly present in the supplied steps. Be concise."
     )
     user = (
-        f"Topic: {payload.topic}\nHint level: {payload.hint_level}\n"
-        f"Stored verified solution steps: {payload.stored_solution_steps}\n"
+        f"Topic: {topic}\nHint level: {payload.hint_level}\n"
+        f"Stored verified solution steps: {steps}\n"
         "Give a useful hint based only on this information."
     )
     errors = []
