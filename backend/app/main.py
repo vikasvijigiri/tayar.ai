@@ -385,30 +385,132 @@ class QuestionAnswerIn(BaseModel):
     confidence: int | None = Field(default=None, ge=1, le=5)
 
 
+def choose_question_strategy(weakest_topic: dict | None, topic_question_count: int, limit: int) -> tuple[str, str]:
+    if not weakest_topic:
+        return "baseline", "baseline_not_established"
+    if topic_question_count >= limit:
+        return "weak_topic_focus", "sufficient_verified_topic_coverage"
+    return "mixed_baseline", "insufficient_verified_questions_for_full_set"
+
+
 @app.get("/v1/questions")
-async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
-    """Return only active, source-verified questions. Never select answer_key here."""
+async def list_verified_questions(
+    request: Request,
+    exam_id: str = "rrb_ntpc",
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+):
+    """Return only active, source-verified questions and optionally focus on a weak topic."""
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not base_url or not service_key:
         raise HTTPException(status_code=503, detail="Verified question service is not configured.")
-    params = {
-        "select": "id,exam_id,topic_id,question_text,options,source_document,source_page,difficulty,syllabus_weight",
-        "exam_id": f"eq.{exam_id}",
-        "source_verified": "eq.true",
-        "active": "eq.true",
-        "order": "id.asc",
-        "limit": str(limit),
-        "offset": str(offset),
-    }
-    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+
+    authorization = request.headers.get("authorization", "").strip()
+    token = ""
+    if authorization:
+        scheme, _, supplied_token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not supplied_token.strip():
+            raise HTTPException(status_code=401, detail="A valid Bearer access token is required.")
+        if not anon_key:
+            raise HTTPException(status_code=503, detail="Authentication is not configured.")
+        token = supplied_token.strip()
+
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    strategy = "baseline"
+    strategy_reason = "baseline_not_established"
+    focus_topic = None
+    focus_topic_id = None
+
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            response = await client.get(f"{base_url}/rest/v1/questions", params=params, headers=headers)
-        if response.status_code >= 500:
-            raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
-        response.raise_for_status()
-        questions = response.json()
+            if token:
+                user_response = await client.get(
+                    f"{base_url}/auth/v1/user",
+                    headers={"apikey": anon_key, "Authorization": f"Bearer {token}"},
+                )
+                if user_response.status_code in (401, 403):
+                    raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+                user_response.raise_for_status()
+                user_id = user_response.json().get("id")
+                if not user_id:
+                    raise HTTPException(status_code=401, detail="Supabase did not return a user.")
+
+                history_response = await client.get(
+                    f"{base_url}/rest/v1/attempts",
+                    params={
+                        "select": "is_correct,elapsed_ms,created_at,question_id,questions(topic_id,topics(name,slug))",
+                        "user_id": f"eq.{user_id}",
+                        "order": "created_at.desc",
+                        "limit": "1000",
+                    },
+                    headers=admin_headers,
+                )
+                history_response.raise_for_status()
+                summary = summarize_attempt_rows(history_response.json())
+                focus_topic = summary.get("weakest_topic")
+                if focus_topic:
+                    topic_response = await client.get(
+                        f"{base_url}/rest/v1/topics",
+                        params={
+                            "select": "id",
+                            "exam_id": f"eq.{exam_id}",
+                            "slug": f"eq.{focus_topic['slug']}",
+                            "limit": "1",
+                        },
+                        headers=admin_headers,
+                    )
+                    topic_response.raise_for_status()
+                    topics = topic_response.json()
+                    if topics:
+                        focus_topic_id = topics[0].get("id")
+                if focus_topic_id:
+                    count_response = await client.get(
+                        f"{base_url}/rest/v1/questions",
+                        params={
+                            "select": "id",
+                            "exam_id": f"eq.{exam_id}",
+                            "topic_id": f"eq.{focus_topic_id}",
+                            "source_verified": "eq.true",
+                            "active": "eq.true",
+                            "limit": "1",
+                        },
+                        headers={**admin_headers, "Prefer": "count=exact"},
+                    )
+                    count_response.raise_for_status()
+                    content_range = count_response.headers.get("content-range", "")
+                    try:
+                        topic_question_count = int(content_range.rsplit("/", 1)[1])
+                    except (IndexError, ValueError):
+                        topic_question_count = 0
+                    strategy, strategy_reason = choose_question_strategy(
+                        focus_topic, topic_question_count, limit
+                    )
+                    if strategy != "weak_topic_focus":
+                        focus_topic_id = None
+
+            params = {
+                "select": "id,exam_id,topic_id,question_text,options,source_document,source_page,difficulty,syllabus_weight",
+                "exam_id": f"eq.{exam_id}",
+                "source_verified": "eq.true",
+                "active": "eq.true",
+                "order": "id.asc",
+                "limit": str(limit),
+                "offset": str(offset),
+            }
+            if focus_topic_id and strategy == "weak_topic_focus":
+                params["topic_id"] = f"eq.{focus_topic_id}"
+            response = await client.get(
+                f"{base_url}/rest/v1/questions",
+                params=params,
+                headers=admin_headers,
+            )
+            if response.status_code >= 500:
+                raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
+            response.raise_for_status()
+            questions = response.json()
+
         public_fields = (
             "id", "exam_id", "topic_id", "question_text", "options",
             "source_document", "source_page", "difficulty", "syllabus_weight",
@@ -417,7 +519,15 @@ async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Query(
             {field: question[field] for field in public_fields if field in question}
             for question in questions
         ]
-        return {"exam_id": exam_id, "questions": safe_questions, "limit": limit, "offset": offset}
+        return {
+            "exam_id": exam_id,
+            "questions": safe_questions,
+            "limit": limit,
+            "offset": offset,
+            "strategy": strategy,
+            "strategy_reason": strategy_reason,
+            "focus_topic": focus_topic,
+        }
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
