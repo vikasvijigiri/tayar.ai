@@ -11,7 +11,7 @@ Android-first adaptive exam preparation. RRB NTPC is the first exam configuratio
 - GitHub Actions tests and Android APK/AAB build artifacts
 
 ## Source integrity
-No questions are seeded in this starter. Import only questions verified directly against source PDFs, preserving wording/options and recording source document/page. Verify answer keys and solution steps before publication. AI must never alter the stored answer key.
+A reviewed starter SQL seed is provided at `backend/supabase/seed_verified_math.sql`. It contains ten Number System questions checked directly against the uploaded chapter-wise PDF, with original options, answer keys, shift metadata and PDF page references. The solution steps are independently authored and arithmetically checked, not claimed as verbatim PDF explanations. Run the seed only after `backend/supabase/schema.sql`; the app will not show these questions until the seed has been applied to the connected Supabase project. Continue importing only questions verified directly against source PDFs. AI must never alter the stored answer key.
 
 ## Backend local run
 ```bash
@@ -40,7 +40,7 @@ cd mobile
 npm install
 npx expo start
 ```
-The dashboard checks the configured Render API health endpoint and displays the current connection state. Learning statistics and practice remain placeholders until authenticated history and the verified question bank are connected.
+The dashboard checks the configured Render API health endpoint, supports Supabase sign-in/session refresh, loads only published verified questions, submits answers for server-side grading, and refreshes learning statistics after answers. Live Supabase configuration and device-level testing are still required.
 
 ## Monitoring (local Prometheus + Grafana)
 Docker and Docker Compose are required. From the repository root:
@@ -64,13 +64,13 @@ Render uses `render.yaml`. Configure the environment variables in the Render das
 - At least one AI key for AI hints: `GROQ_API_KEY`, `GEMINI_API_KEY`, or `CEREBRAS_API_KEY`
 - Optional provider order and model overrides documented in `backend/app/main.py`
 
-Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql` in Supabase SQL Editor. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
+Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql` and then `backend/supabase/seed_verified_math.sql` in Supabase SQL Editor to publish the reviewed starter questions. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
 ## CI/CD
 Pushes and pull requests run backend tests, dependency audit, mobile type checking/smoke tests, and Android builds. The Android workflow builds an installable APK and a Play Store AAB, reports their sizes, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts. Pushing a tag such as `v0.1.0` attaches release files to a GitHub Release.
 
 ## Current limitations
-- No source-verified question bank has been imported yet.
+- The ten-question starter seed is committed but must still be applied to the target Supabase project; the live app currently has no published question bank until that is done.
 - Sign-up/sign-in UI, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented but require live Supabase integration tests before production use.
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
