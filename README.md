@@ -65,13 +65,13 @@ Render uses `render.yaml`. Configure the environment variables in the Render das
 - At least one AI key for AI hints: `GROQ_API_KEY`, `GEMINI_API_KEY`, or `CEREBRAS_API_KEY`
 - Optional provider order and model overrides documented in `backend/app/main.py`
 
-Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql` and then `backend/supabase/seed_verified_math.sql` in Supabase SQL Editor to publish the reviewed starter questions. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
+Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql`, then `backend/supabase/seed_verified_math.sql`, and finally `backend/supabase/seed_assertions.sql` in Supabase SQL Editor to publish and validate the 38 source-verified questions across five topics. The incremental `seed_verified_math_expansion.sql` adds the latest 24-question expansion to an existing 14-question installation. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
 ## CI/CD
-Pushes and pull requests run backend tests, dependency audit, mobile type checking/smoke tests, and Android builds. The Android workflow builds an installable APK and a Play Store AAB, reports their sizes, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts. Pushing a tag such as `v0.1.0` attaches release files to a GitHub Release.
+Pushes and pull requests run backend tests, dependency audit, mobile type checking/smoke tests, and Android builds. The Android workflow builds an installable APK candidate and an Android App Bundle (AAB), reports their sizes, and fails if the APK exceeds 100 MiB. Production distribution requires a persistent release-signing key; do not publish a debug-signed candidate. Artifacts are available under Actions → workflow run → Artifacts. Pushing a tag such as `v0.1.0` attaches release files to a GitHub Release.
 
 ## Current limitations
-- The 14-question starter seed is committed but must still be applied to the target Supabase project; the live app currently has no published question bank until that is done.
+- The reviewed bank now has 38 source-verified questions across five topics. This is a smoke-test/early-access bank, not comprehensive coverage of the full RRB NTPC syllabus; continue expanding from the uploaded source PDFs before a broad public launch.
 - Sign-up/sign-in UI, secure token storage/refresh, verified-question delivery, server-side grading and basic attempt summaries are implemented but require live Supabase integration tests before production use.
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
