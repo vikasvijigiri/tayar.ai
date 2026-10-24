@@ -691,7 +691,7 @@ async def answer_verified_question(
                 existing_response = await client.get(
                     f"{base_url}/rest/v1/attempts",
                     params={
-                        "select": "idempotency_key,is_correct,answer_given",
+                        "select": "idempotency_key,question_id,is_correct,answer_given,elapsed_ms,confidence",
                         "user_id": f"eq.{user_id}",
                         "idempotency_key": f"eq.{idempotency_key}",
                         "limit": "1",
@@ -702,7 +702,16 @@ async def answer_verified_question(
                 saved_rows = existing_response.json()
                 if not saved_rows:
                     raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
-                is_correct = bool(saved_rows[0]["is_correct"])
+                existing = saved_rows[0]
+                # Bind the idempotency key to one exact logical submission.
+                if (
+                    str(existing.get("question_id")) != str(question_id)
+                    or existing.get("answer_given") != payload.answer_given
+                    or int(existing.get("elapsed_ms") or 0) != payload.elapsed_ms
+                    or existing.get("confidence") != payload.confidence
+                ):
+                    raise HTTPException(status_code=409, detail="Idempotency-Key was already used for a different answer.")
+                is_correct = bool(existing["is_correct"])
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
