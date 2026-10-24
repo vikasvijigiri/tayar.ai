@@ -381,3 +381,67 @@ def test_ai_provider_success_is_instrumented(monkeypatch):
     assert 'provider="groq"' in metrics
     assert 'outcome="success"' in metrics
     assert "tayar_ai_provider_request_duration_seconds" in metrics
+
+
+def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-ai-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            assert url == "https://supabase.example/rest/v1/exams"
+            assert params == {"select": "id", "limit": "1"}
+            assert headers["Authorization"] == "Bearer server-only-test-key"
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get("/health/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["dependencies"]["supabase"] == "connected"
+    assert body["dependencies"]["ai_provider_configured"] is True
+    assert "server-only-test-key" not in response.text
+
+
+def test_readiness_fails_closed_when_supabase_is_unreachable(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            raise httpx.ConnectError("test connection failure")
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json()["detail"]["dependencies"]["supabase"] == "unreachable"
