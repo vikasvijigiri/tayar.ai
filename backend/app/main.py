@@ -317,3 +317,118 @@ async def auth_refresh(payload: RefreshCredentials):
         return response.json()
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
+
+
+class QuestionAnswerIn(BaseModel):
+    answer_given: str = Field(min_length=1, max_length=200)
+    elapsed_ms: int = Field(ge=0, le=3600000)
+    confidence: int | None = Field(default=None, ge=1, le=5)
+
+
+@app.get("/v1/questions")
+async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Field(default=10, ge=1, le=50), offset: int = Field(default=0, ge=0)):
+    """Return only active, source-verified questions. Never select answer_key here."""
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not service_key:
+        raise HTTPException(status_code=503, detail="Verified question service is not configured.")
+    params = {
+        "select": "id,exam_id,topic_id,question_text,options,source_document,source_page,difficulty,syllabus_weight",
+        "exam_id": f"eq.{exam_id}",
+        "source_verified": "eq.true",
+        "active": "eq.true",
+        "order": "id.asc",
+        "limit": str(limit),
+        "offset": str(offset),
+    }
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            response = await client.get(f"{base_url}/rest/v1/questions", params=params, headers=headers)
+        if response.status_code >= 500:
+            raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
+        response.raise_for_status()
+        questions = response.json()
+        return {"exam_id": exam_id, "questions": questions, "limit": limit, "offset": offset}
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="Question database request failed.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Question database is temporarily unreachable.")
+
+
+@app.post("/v1/questions/{question_id}/answer")
+async def answer_verified_question(question_id: str, payload: QuestionAnswerIn, request: Request):
+    """Grade on the server and save an attempt; answer keys never come from the client."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
+
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not anon_key or not service_key:
+        raise HTTPException(status_code=503, detail="Question and attempt services are not configured.")
+
+    user_headers = {"apikey": anon_key, "Authorization": f"Bearer {token}"}
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            user_response = await client.get(f"{base_url}/auth/v1/user", headers=user_headers)
+            if user_response.status_code in (401, 403):
+                raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+            user_response.raise_for_status()
+            user_id = user_response.json().get("id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Supabase did not return a user.")
+
+            question_response = await client.get(
+                f"{base_url}/rest/v1/questions",
+                params={
+                    "select": "id,answer_key,solution_steps,source_document,source_page,active,source_verified",
+                    "id": f"eq.{question_id}",
+                    "active": "eq.true",
+                    "source_verified": "eq.true",
+                    "limit": "1",
+                },
+                headers=admin_headers,
+            )
+            question_response.raise_for_status()
+            matches = question_response.json()
+            if not matches:
+                raise HTTPException(status_code=404, detail="Verified question not found.")
+            question = matches[0]
+            is_correct = payload.answer_given == str(question["answer_key"])
+
+            attempt_response = await client.post(
+                f"{base_url}/rest/v1/attempts",
+                headers={**user_headers, "Content-Type": "application/json", "Prefer": "return=minimal"},
+                json={
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "is_correct": is_correct,
+                    "elapsed_ms": payload.elapsed_ms,
+                    "confidence": payload.confidence,
+                    "answer_given": payload.answer_given,
+                },
+            )
+            if attempt_response.status_code in (401, 403):
+                raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
+            attempt_response.raise_for_status()
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="Question or attempt database request failed.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=503, detail="Question or attempt service is temporarily unreachable.")
+
+    return {
+        "saved": True,
+        "is_correct": is_correct,
+        "answer_key": question["answer_key"],
+        "solution_steps": question.get("solution_steps") or [],
+        "source_document": question.get("source_document"),
+        "source_page": question.get("source_page"),
+    }
