@@ -185,6 +185,7 @@ export default function App() {
   };
 
   const storeSession = async (data: { access_token?: unknown; refresh_token?: unknown }) => {
+    if (signOutPromise.current) throw new Error("Sign-out is still finishing. Try again.");
     if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") throw new Error("Sign-in did not return a valid session.");
     const generation = ++sessionGeneration.current;
     const pendingRefresh = refreshPromise.current;
@@ -372,6 +373,7 @@ export default function App() {
   };
 
   const refreshAccessToken = async (): Promise<RefreshOutcome> => {
+    if (signOutPromise.current) return { status: "invalid" };
     if (refreshPromise.current) return refreshPromise.current;
     const generation = sessionGeneration.current;
     const task = (async (): Promise<RefreshOutcome> => {
