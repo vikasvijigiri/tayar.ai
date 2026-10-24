@@ -23,8 +23,10 @@ create table if not exists public.attempts (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
   question_id uuid not null references public.questions(id), is_correct boolean not null,
   elapsed_ms integer not null check(elapsed_ms>=0), confidence smallint check(confidence between 1 and 5),
-  answer_given text, created_at timestamptz not null default now()
+  answer_given text, idempotency_key uuid, created_at timestamptz not null default now()
 );
+create unique index if not exists attempts_user_idempotency_key_uidx
+  on public.attempts(user_id, idempotency_key);
 create index if not exists attempts_user_created_idx on public.attempts(user_id,created_at desc);
 alter table public.exams enable row level security;
 alter table public.topics enable row level security;
