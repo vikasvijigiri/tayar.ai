@@ -136,3 +136,17 @@ def test_question_answer_rejects_invalid_elapsed_time():
         "elapsed_ms": 3600001
     })
     assert r.status_code == 422
+
+
+def test_attempt_summary_requires_bearer_token():
+    r = client.get("/v1/attempts/summary")
+    assert r.status_code == 401
+    assert "Bearer" in r.json()["detail"]
+
+
+def test_attempt_summary_fails_closed_without_supabase_configuration(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    r = client.get("/v1/attempts/summary", headers={"Authorization": "Bearer fake"})
+    assert r.status_code == 503
+    assert "not configured" in r.json()["detail"]
