@@ -65,6 +65,7 @@ export default function App() {
   const [hint, setHint] = useState("");
   const [hintLoading, setHintLoading] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(480);
   const questionStartedAt = useRef(Date.now());
 
   useEffect(() => {
@@ -220,6 +221,18 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    setRemainingSeconds(480);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || questions.length === 0) return;
+    const interval = setInterval(() => {
+      setRemainingSeconds(current => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [token, questions.length]);
+
+  useEffect(() => {
     setSelectedAnswer("");
     setFeedback(null);
     setHint("");
@@ -272,6 +285,10 @@ export default function App() {
   const submitAnswer = async () => {
     const question = questions[questionIndex];
     if (!question || !selectedAnswer || !token || feedback) return;
+    if (remainingSeconds <= 0) {
+      setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
+      return;
+    }
     setAnswerLoading(true);
     setQuestionError("");
     try {
@@ -330,6 +347,10 @@ export default function App() {
 
   const loadMoreQuestions = async () => {
     if (questionLoading) return;
+    if (remainingSeconds <= 0) {
+      setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
+      return;
+    }
     setQuestionLoading(true);
     setQuestionError("");
     try {
@@ -350,6 +371,7 @@ export default function App() {
     }
   };
 
+  const timerLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
   const lastFiveAccuracy = summary?.last_5_accuracy_pct == null ? "—" : String(summary.last_5_accuracy_pct) + "%";
   const overallAccuracy = summary?.overall_accuracy_pct == null ? "—" : String(summary.overall_accuracy_pct) + "%";
   return (
@@ -378,6 +400,11 @@ export default function App() {
         <Text style={s.section}>Practice workspace</Text>
         <View style={s.card}>
           <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
+          <View style={s.timerRow}>
+            <View><Text style={s.timerCaption}>8-MINUTE PRACTICE SET</Text><Text style={[s.timerValue,remainingSeconds<=60&&{color:C.red}]}>{timerLabel}</Text></View>
+            <TouchableOpacity onPress={() => {setRemainingSeconds(480);setQuestionIndex(0);setSelectedAnswer("");setFeedback(null);setHint("");setQuestionError("");questionStartedAt.current=Date.now();}} style={s.timerReset}><Text style={s.hintButtonText}>Restart set</Text></TouchableOpacity>
+          </View>
+          {remainingSeconds===0&&<Text style={[s.authMessage,{color:C.red}]}>Time is up. Restart the set to continue practicing.</Text>}
           {questionLoading && questions.length === 0 ? <ActivityIndicator color={C.teal} style={{marginTop:18}}/> :
             questionError && questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>{questionError}</Text> :
             questions.length === 0 ? <Text style={[s.body,{marginTop:12}]}>No verified active questions are published yet. This workspace will only show questions verified against the uploaded railway PDFs.</Text> :
@@ -401,7 +428,7 @@ export default function App() {
                 <Text style={s.small}>Source: {feedback.source_document}{feedback.source_page?" · page "+feedback.source_page:""}</Text>
               </View>}
               {questionError!==""&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
-              {!feedback ? <TouchableOpacity disabled={!selectedAnswer||answerLoading} onPress={submitAnswer} style={[s.primaryButton,(!selectedAnswer||answerLoading)&&s.dimmed]}>{answerLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Submit answer</Text>}</TouchableOpacity> :
+              {!feedback ? <TouchableOpacity disabled={!selectedAnswer||answerLoading||remainingSeconds===0} onPress={submitAnswer} style={[s.primaryButton,(!selectedAnswer||answerLoading)&&s.dimmed]}>{answerLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Submit answer</Text>}</TouchableOpacity> :
                 <TouchableOpacity onPress={questionIndex+1<questions.length?()=>setQuestionIndex(i=>i+1):loadMoreQuestions} disabled={questionLoading} style={s.primaryButton}>{questionLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>{questionIndex+1<questions.length?"Next question":"Load more questions"}</Text>}</TouchableOpacity>}
             </>
           }
@@ -450,7 +477,7 @@ const s=StyleSheet.create({
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
   input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
   topicRow:{marginTop:13},topicHeader:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},topicName:{color:C.text,fontSize:12,fontWeight:"700"},topicAccuracy:{color:C.teal,fontSize:12,fontWeight:"800"},topicTrack:{height:5,borderRadius:8,backgroundColor:"#263650",marginTop:8,marginBottom:6,overflow:"hidden"},topicFill:{height:5,backgroundColor:C.teal,borderRadius:8},progressRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},progressValue:{color:C.text,fontSize:13,fontWeight:"800"},
-  hintButton:{alignSelf:"flex-start",paddingVertical:9,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border,marginTop:4,marginBottom:6},hintButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},hintPanel:{padding:12,borderRadius:12,backgroundColor:C.panel2,marginTop:8,marginBottom:8,gap:6},
+  timerRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:14,marginBottom:6,padding:12,borderRadius:13,backgroundColor:C.bg,borderWidth:1,borderColor:C.border},timerCaption:{color:C.muted,fontSize:9,fontWeight:"800",letterSpacing:1},timerValue:{color:C.teal,fontSize:23,fontWeight:"900",marginTop:4,fontVariant:["tabular-nums"]},timerReset:{paddingVertical:10,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border},hintButton:{alignSelf:"flex-start",paddingVertical:9,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border,marginTop:4,marginBottom:6},hintButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},hintPanel:{padding:12,borderRadius:12,backgroundColor:C.panel2,marginTop:8,marginBottom:8,gap:6},
   option:{padding:13,borderRadius:12,borderWidth:1,borderColor:C.border,marginTop:9,backgroundColor:C.bg},optionSelected:{borderColor:C.teal,backgroundColor:"#173C3D"},optionText:{color:C.muted,fontSize:13,lineHeight:19},optionTextSelected:{color:C.text,fontWeight:"700"},feedback:{borderWidth:1,borderRadius:12,padding:13,marginTop:14,gap:6},feedbackTitle:{fontSize:13,fontWeight:"800",marginBottom:4},
   authMessage:{fontSize:12,lineHeight:18,marginTop:12},primaryButton:{backgroundColor:C.teal,borderRadius:13,paddingVertical:14,alignItems:"center",justifyContent:"center",marginTop:18,minHeight:48},primaryButtonText:{color:C.bg,fontWeight:"900",fontSize:14},dimmed:{opacity:.65},
   modeSwitch:{paddingVertical:15,alignItems:"center"},modeText:{color:C.blue,fontSize:12,fontWeight:"700"},statusRow:{flexDirection:"row",alignItems:"center",marginBottom:16},statusDot:{width:7,height:7,borderRadius:4,marginRight:8},statusText:{color:C.muted,fontSize:11},
