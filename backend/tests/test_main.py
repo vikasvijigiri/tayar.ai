@@ -115,20 +115,10 @@ def test_question_answer_rejects_malformed_question_id():
     assert r.status_code == 422
 
 
-def test_signup_fails_closed_without_supabase_configuration(monkeypatch):
-    monkeypatch.delenv("SUPABASE_URL", raising=False)
-    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
-    r = client.post("/v1/auth/signup", json={"email": "test@example.com", "password": "correct-horse-battery"})
-    assert r.status_code == 503
-    assert "not configured" in r.json()["detail"]
-
-
-def test_signin_fails_closed_without_supabase_configuration(monkeypatch):
-    monkeypatch.delenv("SUPABASE_URL", raising=False)
-    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
-    r = client.post("/v1/auth/signin", json={"email": "test@example.com", "password": "correct-horse-battery"})
-    assert r.status_code == 503
-    assert "not configured" in r.json()["detail"]
+def test_legacy_email_password_routes_are_disabled():
+    for path in ("/v1/auth/signup", "/v1/auth/signin"):
+        response = client.post(path, json={"email": "learner@example.com", "password": "correct-horse-battery"})
+        assert response.status_code == 404
 
 
 def test_refresh_fails_closed_without_supabase_configuration(monkeypatch):
@@ -138,10 +128,6 @@ def test_refresh_fails_closed_without_supabase_configuration(monkeypatch):
     assert r.status_code == 503
     assert "not configured" in r.json()["detail"]
 
-
-def test_auth_rejects_short_password():
-    r = client.post("/v1/auth/signin", json={"email": "test@example.com", "password": "short"})
-    assert r.status_code == 422
 
 
 def test_question_list_fails_closed_without_service_role_key(monkeypatch):
