@@ -13,6 +13,9 @@ import {
   View,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import * as Crypto from "expo-crypto";
 
 const API_BASE_URL = "https://tayar-ai-api.onrender.com";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -33,11 +36,7 @@ async function apiFetch(
 
 // This key is an idempotency identifier, not an authentication secret.
 function createIdempotencyKey(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
-    const random = Math.floor(Math.random() * 16);
-    const value = character === "x" ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
+  return Crypto.randomUUID();
 }
 const C = {
   bg: "#0A1020", panel: "#121C30", panel2: "#17243B", text: "#F4F7FC",
@@ -46,7 +45,6 @@ const C = {
 };
 
 type ApiStatus = "checking" | "online" | "offline";
-type AuthMode = "signin" | "signup";
 type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
@@ -63,9 +61,10 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [token, setToken] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState<AuthMode>("signin");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const otpLastSentAt = useRef(0);
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -156,49 +155,101 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  const authenticate = async () => {
-    setAuthMessage("");
-    setAuthError(false);
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setAuthError(true);
-      setAuthMessage("Enter your email and password to continue.");
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/v1/auth/${authMode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Authentication failed.");
-      if (data.access_token) {
-        await SecureStore.setItemAsync("tayar_access_token", data.access_token);
-        if (data.refresh_token) await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
-        setToken(data.access_token);
-        setPassword("");
-        setAuthMessage(authMode === "signup" ? "Account created. You're signed in." : "Welcome back.");
-      } else {
-        setAuthError(false);
-        setAuthMessage("Check your email to confirm your account, then sign in.");
-        setAuthMode("signin");
-        setPassword("");
-      }
-    } catch (error) {
-      setAuthError(true);
-      setAuthMessage(error instanceof Error ? error.message : "Unable to connect. Please try again.");
-    } finally {
-      setAuthLoading(false);
-    }
+  const authConfig = async (): Promise<{ url: string; anonKey: string }> => {
+    const response = await apiFetch(API_BASE_URL + "/v1/config", {}, 10000);
+    if (!response.ok) throw new Error("Sign-in unavailable.");
+    const data = await response.json();
+    if (typeof data.supabase_url !== "string" || typeof data.supabase_anon_key !== "string" || !data.supabase_url.startsWith("https://") || !data.supabase_anon_key) throw new Error("Sign-in is not configured.");
+    return { url: data.supabase_url.replace(/\/$/, ""), anonKey: data.supabase_anon_key };
   };
 
-  const signOut = async () => {
+  const authRequest = async (path: string, body: Record<string, unknown>) => {
+    const cfg = await authConfig();
+    const response = await apiFetch(cfg.url + "/auth/v1/" + path, { method: "POST", headers: { apikey: cfg.anonKey, "Content-Type": "application/json" }, body: JSON.stringify(body) }, 15000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 429) throw new Error("Too many attempts. Try again later.");
+      if (response.status === 400 || response.status === 401) throw new Error("Check your details and try again.");
+      throw new Error("Sign-in failed. Try again.");
+    }
+    return data;
+  };
+
+  const storeSession = async (data: { access_token?: unknown; refresh_token?: unknown }) => {
+    if (typeof data.access_token !== "string" || typeof data.refresh_token !== "string") throw new Error("Sign-in did not return a valid session.");
+    try {
+      await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+      await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+    } catch (error) {
+      await SecureStore.deleteItemAsync("tayar_access_token");
+      await SecureStore.deleteItemAsync("tayar_refresh_token");
+      throw error;
+    }
+    setToken(data.access_token); setAuthMessage(""); setAuthError(false); setOtp("");
+  };
+
+  const sendOtp = async () => {
+    setAuthMessage(""); setAuthError(false);
+    const normalizedPhone = phone.trim().replace(/[\s().-]/g, "");
+    if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) { setAuthError(true); setAuthMessage("Enter phone with country code, e.g. +91…"); return; }
+    const waitMs = 30000 - (Date.now() - otpLastSentAt.current);
+    if (waitMs > 0) { setAuthError(true); setAuthMessage("Wait " + Math.ceil(waitMs / 1000) + "s before requesting another code."); return; }
+    setAuthLoading(true);
+    try { await authRequest("otp", { phone: normalizedPhone, create_user: true }); otpLastSentAt.current = Date.now(); setPhone(normalizedPhone); setOtpSent(true); setAuthMessage("Code sent."); }
+    catch (error) { setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Could not send code."); }
+    finally { setAuthLoading(false); }
+  };
+
+  const verifyOtp = async () => {
+    setAuthMessage(""); setAuthError(false);
+    const normalizedOtp = otp.trim();
+    if (!/^\d{4,10}$/.test(normalizedOtp)) { setAuthError(true); setAuthMessage("Enter the SMS code."); return; }
+    setAuthLoading(true);
+    try { const data = await authRequest("verify", { phone: phone.trim().replace(/[\s().-]/g, ""), token: normalizedOtp, type: "sms" }); await storeSession(data); }
+    catch (error) { setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Code verification failed."); }
+    finally { setAuthLoading(false); }
+  };
+
+  const signInWithGoogle = async () => {
+    setAuthMessage(""); setAuthError(false); setAuthLoading(true);
+    try {
+      const cfg = await authConfig();
+      const redirectTo = Linking.createURL("auth/callback");
+      const random = await Crypto.getRandomBytesAsync(32);
+      const verifier = Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      const digestHex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier);
+      const digestBytes = (digestHex.match(/.{2}/g) || []).map((part) => parseInt(part, 16));
+      const challenge = btoa(String.fromCharCode(...digestBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      await SecureStore.setItemAsync("tayar_oauth_verifier", verifier);
+      const authorize = cfg.url + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(redirectTo) + "&code_challenge=" + challenge + "&code_challenge_method=s256";
+      const result = await WebBrowser.openAuthSessionAsync(authorize, redirectTo);
+      if (result.type === "cancel" || result.type === "dismiss") { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); return; }
+      if (result.type !== "success") throw new Error("Google sign-in was interrupted.");
+      const params = Linking.parse(result.url).queryParams || {};
+      const code = typeof params.code === "string" ? params.code : null;
+      if (typeof params.error_description === "string") throw new Error("Google sign-in could not be completed.");
+      if (!code) throw new Error("Google sign-in returned no authorization code.");
+      const savedVerifier = await SecureStore.getItemAsync("tayar_oauth_verifier");
+      await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+      if (!savedVerifier) throw new Error("Sign-in expired. Try again.");
+      await storeSession(await authRequest("token?grant_type=pkce", { auth_code: code, code_verifier: savedVerifier }));
+    } catch (error) { await SecureStore.deleteItemAsync("tayar_oauth_verifier"); setAuthError(true); setAuthMessage(error instanceof Error ? error.message : "Google sign-in failed."); }
+    finally { setAuthLoading(false); }
+  };
+
+    const signOut = async () => {
+    const access = await SecureStore.getItemAsync("tayar_access_token");
+    if (access) {
+      try {
+        const cfg = await authConfig();
+        await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
+      } catch { /* Local logout still succeeds during provider outages. */ }
+    }
     await SecureStore.deleteItemAsync("tayar_access_token");
     await SecureStore.deleteItemAsync("tayar_refresh_token");
+    await SecureStore.deleteItemAsync("tayar_oauth_verifier");
     setToken(null);
-    setAuthMessage("You have signed out.");
+    setAuthMessage("");
     setAuthError(false);
   };
 
@@ -312,37 +363,28 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
         <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <ScrollView contentContainerStyle={s.authPage} keyboardShouldPersistTaps="handled">
-            <View style={s.brandBlock}>
+            <View style={s.minimalAuth}>
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
-              <Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text>
+              <View style={s.card}>
+                {!otpSent ? <>
+                  <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
+                  <TouchableOpacity onPress={sendOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Continue</Text>}</TouchableOpacity>
+                </> : <>
+                  <TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" placeholderTextColor="#71829D" keyboardType="number-pad" autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" accessibilityLabel="SMS verification code" style={s.input} editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
+                  <TouchableOpacity onPress={verifyOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Verify</Text>}</TouchableOpacity>
+                  <TouchableOpacity onPress={sendOtp} disabled={authLoading} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Resend code</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => {setOtpSent(false);setOtp("");setAuthMessage("");setAuthError(false);}} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Change number</Text></TouchableOpacity>
+                </>}
+                <View style={s.authDivider}><View style={s.authDividerLine}/><Text style={s.authDividerText}>OR</Text><View style={s.authDividerLine}/></View>
+                <TouchableOpacity onPress={signInWithGoogle} disabled={authLoading} accessibilityRole="button" style={[s.googleButton,authLoading&&s.dimmed]}><Text style={s.googleButtonText}>Continue with Google</Text></TouchableOpacity>
+                {authMessage !== "" && <Text accessibilityRole="alert" style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
+              </View>
             </View>
-            <View style={s.authHero}>
-              <Text style={s.eyebrow}>RRB NTPC · ADAPTIVE PRACTICE</Text>
-              <Text style={s.authTitle}>{authMode === "signin" ? "Your next attempt starts here." : "Build your learning profile."}</Text>
-              <Text style={s.body}>Practice with verified source questions and build progress from your own attempts.</Text>
-            </View>
-            <View style={s.card}>
-              <Text style={s.section}>{authMode === "signin" ? "Welcome back" : "Create your account"}</Text>
-              <Text style={s.fieldLabel}>EMAIL</Text>
-              <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor="#71829D" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} textContentType="emailAddress" style={s.input} />
-              <Text style={s.fieldLabel}>PASSWORD</Text>
-              <TextInput value={password} onChangeText={setPassword} placeholder="At least 8 characters" placeholderTextColor="#71829D" secureTextEntry autoCapitalize="none" textContentType={authMode === "signin" ? "password" : "newPassword"} style={s.input} onSubmitEditing={authenticate} />
-              {authMessage !== "" && <Text style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
-              <TouchableOpacity onPress={authenticate} disabled={authLoading} style={[s.primaryButton,authLoading&&s.dimmed]}>
-                {authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>{authMode === "signin" ? "Sign in securely" : "Create account"}</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={s.modeSwitch} onPress={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setAuthMessage("");setAuthError(false);}}>
-                <Text style={s.modeText}>{authMode === "signin" ? "New to Tayar.ai? Create an account" : "Already have an account? Sign in"}</Text>
-              </TouchableOpacity>
-            </View>
-            <ServiceStatus status={apiStatus}/>
-            <Text style={s.footer}>Your password is sent only to the authentication endpoint over HTTPS. Session tokens are stored using Android secure storage.</Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
-
 
   const submitAnswer = async () => {
     const question = questions[questionIndex];
@@ -649,7 +691,10 @@ function Metric({label,value,color}:{label:string,value:string,color:string}) {
 
 const s=StyleSheet.create({
   flex:{flex:1},safe:{flex:1,backgroundColor:C.bg},loadingScreen:{flex:1,alignItems:"center",justifyContent:"center",gap:14},
-  authPage:{paddingHorizontal:22,paddingTop:36,paddingBottom:28,flexGrow:1,justifyContent:"center"},
+  authPage:{paddingHorizontal:22,paddingTop:24,paddingBottom:24,flexGrow:1,justifyContent:"center"},
+  minimalAuth:{width:"100%",maxWidth:420,alignSelf:"center"},
+  authDivider:{flexDirection:"row",alignItems:"center",gap:10,marginVertical:16},authDividerLine:{flex:1,height:1,backgroundColor:C.border},authDividerText:{color:C.muted,fontSize:10,fontWeight:"700"},
+  googleButton:{alignItems:"center",justifyContent:"center",minHeight:48,borderRadius:12,borderWidth:1,borderColor:C.border,backgroundColor:C.panel2,paddingHorizontal:14},googleButtonText:{color:C.text,fontSize:14,fontWeight:"700"},
   brandBlock:{marginBottom:30},brand:{color:C.text,fontSize:24,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},
   authHero:{marginBottom:22},eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},authTitle:{color:C.text,fontSize:31,lineHeight:37,fontWeight:"800",letterSpacing:-.6,marginBottom:12},
   body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},

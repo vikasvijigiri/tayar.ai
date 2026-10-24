@@ -86,48 +86,16 @@ def fake_supabase(monkeypatch):
     main._hint_locks.clear()
 
 
-def test_signup_returns_supabase_session(fake_supabase):
-    response = client.post(
-        "/v1/auth/signup",
-        json={"email": "learner@example.com", "password": "correct-horse-battery"},
-    )
-    assert response.status_code == 200
-    assert response.json()["access_token"] == "fake-access"
-
-
-def test_signin_maps_invalid_credentials_to_401(fake_supabase):
-    FakeAsyncClient.post_response = FakeResponse(400, {"message": "invalid credentials"})
-    response = client.post(
-        "/v1/auth/signin",
-        json={"email": "learner@example.com", "password": "wrong-password"},
-    )
-    assert response.status_code == 401
+def test_legacy_email_password_routes_are_disabled():
+    for path in ("/v1/auth/signup", "/v1/auth/signin"):
+        response = client.post(path, json={"email": "learner@example.com", "password": "correct-horse-battery"})
+        assert response.status_code == 404
 
 
 def test_refresh_returns_rotated_session(fake_supabase):
     response = client.post("/v1/auth/refresh", json={"refresh_token": "refresh-token-value"})
     assert response.status_code == 200
     assert response.json()["refresh_token"] == "fake-refresh"
-
-
-def test_signup_fails_closed_without_supabase_configuration(monkeypatch):
-    monkeypatch.delenv("SUPABASE_URL", raising=False)
-    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
-    response = client.post(
-        "/v1/auth/signup",
-        json={"email": "learner@example.com", "password": "correct-horse-battery"},
-    )
-    assert response.status_code == 503
-
-
-def test_auth_maps_upstream_network_error_to_503(fake_supabase):
-    request = httpx.Request("POST", "https://supabase.test/auth/v1/signup")
-    FakeAsyncClient.post_error = httpx.ConnectError("offline", request=request)
-    response = client.post(
-        "/v1/auth/signup",
-        json={"email": "learner@example.com", "password": "correct-horse-battery"},
-    )
-    assert response.status_code == 503
 
 
 def test_hint_requires_bearer_token():
