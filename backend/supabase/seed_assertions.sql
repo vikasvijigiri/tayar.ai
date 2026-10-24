@@ -14,7 +14,14 @@ BEGIN
 
   IF has_function_privilege('anon', 'public.rls_auto_enable()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.rls_auto_enable()', 'EXECUTE')
-     OR has_function_privilege('public', 'public.rls_auto_enable()', 'EXECUTE') THEN
+     OR EXISTS (
+       SELECT 1
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) acl
+       WHERE n.nspname = 'public' AND p.proname = 'rls_auto_enable'
+         AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+     ) THEN
     RAISE EXCEPTION 'API roles and PUBLIC must not execute the RLS event-trigger function';
   END IF;
 
