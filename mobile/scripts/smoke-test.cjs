@@ -24,4 +24,7 @@ if (!app.includes('topic_performance')) throw new Error('Missing topic mastery d
 if (!app.includes('repeat_accuracy_pct')) throw new Error('Missing repeat accuracy data binding');
 if (!app.includes('solution_steps')) throw new Error('Missing solution display');
 if (!app.includes('/v1/ai/hint')) throw new Error('Missing authenticated AI hint integration');
+if (!app.includes('8-MINUTE PRACTICE SET')) throw new Error('Missing timed practice session UI');
+if (!app.includes('setRemainingSeconds(480)') || !app.includes('setInterval(')) throw new Error('Missing eight-minute countdown lifecycle');
+if (!app.includes('remainingSeconds===0')) throw new Error('Missing expired-session state');
 console.log('Mobile source smoke tests passed: auth, secure session, API status, verified practice and solution rendering');
