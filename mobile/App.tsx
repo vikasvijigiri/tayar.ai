@@ -334,7 +334,8 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!token || questions.length === 0) return;
+    // Do not consume practice time on Home, Analytics, Revision or Services.
+    if (!token || screen !== "Practice" || questions.length === 0) return;
     if (sessionDeadline.current === null) {
       sessionDeadline.current = Date.now() + 8 * 60 * 1000;
       setRemainingSeconds(480);
@@ -348,7 +349,7 @@ export default function App() {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [token, questions.length]);
+  }, [token, questions.length, screen]);
 
   useEffect(() => {
     setSelectedAnswer("");
