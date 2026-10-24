@@ -165,44 +165,6 @@ export default function App() {
     return <SafeAreaView style={s.safe}><StatusBar barStyle="light-content" backgroundColor={C.bg}/><View style={s.loadingScreen}><ActivityIndicator color={C.teal} size="large"/><Text style={s.statusText}>Preparing your secure session…</Text></View></SafeAreaView>;
   }
 
-  if (!token) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
-        <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView contentContainerStyle={s.authPage} keyboardShouldPersistTaps="handled">
-            <View style={s.brandBlock}>
-              <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
-              <Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text>
-            </View>
-            <View style={s.authHero}>
-              <Text style={s.eyebrow}>RRB NTPC · ADAPTIVE PRACTICE</Text>
-              <Text style={s.authTitle}>{authMode === "signin" ? "Your next attempt starts here." : "Build your learning profile."}</Text>
-              <Text style={s.body}>Practice with verified source questions and build progress from your own attempts.</Text>
-            </View>
-            <View style={s.card}>
-              <Text style={s.section}>{authMode === "signin" ? "Welcome back" : "Create your account"}</Text>
-              <Text style={s.fieldLabel}>EMAIL</Text>
-              <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor="#71829D" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} textContentType="emailAddress" style={s.input} />
-              <Text style={s.fieldLabel}>PASSWORD</Text>
-              <TextInput value={password} onChangeText={setPassword} placeholder="At least 8 characters" placeholderTextColor="#71829D" secureTextEntry autoCapitalize="none" textContentType={authMode === "signin" ? "password" : "newPassword"} style={s.input} onSubmitEditing={authenticate} />
-              {authMessage !== "" && <Text style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
-              <TouchableOpacity onPress={authenticate} disabled={authLoading} style={[s.primaryButton,authLoading&&s.dimmed]}>
-                {authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>{authMode === "signin" ? "Sign in securely" : "Create account"}</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={s.modeSwitch} onPress={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setAuthMessage("");setAuthError(false);}}>
-                <Text style={s.modeText}>{authMode === "signin" ? "New to Tayar.ai? Create an account" : "Already have an account? Sign in"}</Text>
-              </TouchableOpacity>
-            </View>
-            <ServiceStatus status={apiStatus}/>
-            <Text style={s.footer}>Your password is sent only to the authentication endpoint over HTTPS. Session tokens are stored using Android secure storage.</Text>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
-
-
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -252,6 +214,45 @@ export default function App() {
     setHint("");
     questionStartedAt.current = Date.now();
   }, [questionIndex]);
+
+
+  if (!token) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
+        <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView contentContainerStyle={s.authPage} keyboardShouldPersistTaps="handled">
+            <View style={s.brandBlock}>
+              <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
+              <Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text>
+            </View>
+            <View style={s.authHero}>
+              <Text style={s.eyebrow}>RRB NTPC · ADAPTIVE PRACTICE</Text>
+              <Text style={s.authTitle}>{authMode === "signin" ? "Your next attempt starts here." : "Build your learning profile."}</Text>
+              <Text style={s.body}>Practice with verified source questions and build progress from your own attempts.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.section}>{authMode === "signin" ? "Welcome back" : "Create your account"}</Text>
+              <Text style={s.fieldLabel}>EMAIL</Text>
+              <TextInput value={email} onChangeText={setEmail} placeholder="you@example.com" placeholderTextColor="#71829D" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} textContentType="emailAddress" style={s.input} />
+              <Text style={s.fieldLabel}>PASSWORD</Text>
+              <TextInput value={password} onChangeText={setPassword} placeholder="At least 8 characters" placeholderTextColor="#71829D" secureTextEntry autoCapitalize="none" textContentType={authMode === "signin" ? "password" : "newPassword"} style={s.input} onSubmitEditing={authenticate} />
+              {authMessage !== "" && <Text style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
+              <TouchableOpacity onPress={authenticate} disabled={authLoading} style={[s.primaryButton,authLoading&&s.dimmed]}>
+                {authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>{authMode === "signin" ? "Sign in securely" : "Create account"}</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modeSwitch} onPress={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setAuthMessage("");setAuthError(false);}}>
+                <Text style={s.modeText}>{authMode === "signin" ? "New to Tayar.ai? Create an account" : "Already have an account? Sign in"}</Text>
+              </TouchableOpacity>
+            </View>
+            <ServiceStatus status={apiStatus}/>
+            <Text style={s.footer}>Your password is sent only to the authentication endpoint over HTTPS. Session tokens are stored using Android secure storage.</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
 
   const submitAnswer = async () => {
     const question = questions[questionIndex];
