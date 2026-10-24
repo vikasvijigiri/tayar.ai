@@ -68,7 +68,8 @@ def test_hint_rate_limit_blocks_excess_inference():
     main._hint_requests.pop(user_id, None)
 
 
-def test_attempt_preview():
+def test_attempt_preview(monkeypatch):
+    monkeypatch.setenv("ENABLE_ATTEMPT_PREVIEW", "true")
     r = client.post("/v1/attempts/preview", json={
         "question_id": "demo", "topic_id": "percentages", "is_correct": False,
         "elapsed_ms": 12000, "confidence": 2
@@ -78,6 +79,15 @@ def test_attempt_preview():
     assert body["accepted"] is True
     assert body["attempt"]["elapsed_ms"] == 12000
     assert "Preview only" in body["note"]
+
+
+def test_attempt_preview_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("ENABLE_ATTEMPT_PREVIEW", raising=False)
+    r = client.post("/v1/attempts/preview", json={
+        "question_id": "demo", "topic_id": "percentages", "is_correct": False,
+        "elapsed_ms": 12000, "confidence": 2
+    })
+    assert r.status_code == 404
 
 
 def test_attempt_rejects_elapsed_time_over_one_hour():
