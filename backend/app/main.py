@@ -246,6 +246,10 @@ def config():
 
 @app.post("/v1/attempts/preview")
 def preview_attempt(payload: AttemptIn):
+    enabled = os.getenv("ENABLE_ATTEMPT_PREVIEW", "false").strip().lower() in {"1", "true", "yes"}
+    if not enabled:
+        # Development-only endpoint; disabled by default in deployed environments.
+        raise HTTPException(status_code=404, detail="Not found.")
     return {
         "accepted": True,
         "attempt": payload.model_dump(),
