@@ -45,6 +45,7 @@ const C = {
 };
 
 type ApiStatus = "checking" | "online" | "offline";
+type RefreshOutcome = { status: "ok"; accessToken: string } | { status: "invalid" } | { status: "unavailable" };
 type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
@@ -66,6 +67,8 @@ export default function App() {
   const [otpSent, setOtpSent] = useState(false);
   const otpLastSentAt = useRef(0);
   const oauthProcessing = useRef(false);
+  const signOutPromise = useRef<Promise<void> | null>(null);
+  const refreshPromise = useRef<Promise<RefreshOutcome> | null>(null);
   const oauthHandledUrls = useRef<Set<string>>(new Set());
   const [authLoading, setAuthLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
@@ -102,7 +105,10 @@ export default function App() {
           SecureStore.getItemAsync("tayar_access_token"),
           SecureStore.getItemAsync("tayar_refresh_token"),
         ]);
-        if (!savedAccess) return;
+        if (!savedAccess) {
+          if (savedRefresh) await SecureStore.deleteItemAsync("tayar_refresh_token");
+          return;
+        }
         if (savedRefresh) {
           try {
             const response = await apiFetch(`${API_BASE_URL}/v1/auth/refresh`, {
@@ -299,19 +305,118 @@ export default function App() {
   };
 
     const signOut = async () => {
-    const access = await SecureStore.getItemAsync("tayar_access_token");
-    if (access) {
-      try {
-        const cfg = await authConfig();
-        await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
-      } catch { /* Local logout still succeeds during provider outages. */ }
+    if (signOutPromise.current) {
+      await signOutPromise.current;
+      return;
     }
-    await SecureStore.deleteItemAsync("tayar_access_token");
-    await SecureStore.deleteItemAsync("tayar_refresh_token");
-    await SecureStore.deleteItemAsync("tayar_oauth_verifier");
-    setToken(null);
-    setAuthMessage("");
-    setAuthError(false);
+    const task = (async () => {
+      let access: string | null = null;
+      try { access = await SecureStore.getItemAsync("tayar_access_token"); } catch { /* Continue with local cleanup. */ }
+      if (access) {
+        try {
+          const cfg = await authConfig();
+          await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
+        } catch { /* Local logout still succeeds during provider outages. */ }
+      }
+      await Promise.allSettled([
+        SecureStore.deleteItemAsync("tayar_access_token"),
+        SecureStore.deleteItemAsync("tayar_refresh_token"),
+        SecureStore.deleteItemAsync("tayar_oauth_verifier"),
+      ]);
+      // Clear all user-scoped data before another account can render.
+      answerRequestKeys.current.clear();
+      hintCache.current.clear();
+      sessionDeadline.current = null;
+      refreshPromise.current = null;
+      setToken(null);
+      setQuestions([]);
+      setQuestionIndex(0);
+      setTotalQuestionCount(0);
+      setTestOffset(0);
+      setCurrentTestSize(0);
+      setSelectedAnswer("");
+      setFeedback(null);
+      setHint("");
+      setSummary(null);
+      setAttemptHistory([]);
+      setQuestionError("");
+      setAuthMessage("");
+      setAuthError(false);
+      setOtp("");
+      setOtpSent(false);
+      setRemainingSeconds(480);
+      setQuestionLoading(false);
+      setAnswerLoading(false);
+      setHintLoading(false);
+      setHistoryLoading(false);
+      setServiceChecks({});
+      setScreen("Home");
+    })();
+    signOutPromise.current = task;
+    try { await task; }
+    finally { if (signOutPromise.current === task) signOutPromise.current = null; }
+  };
+
+  const refreshAccessToken = async (): Promise<RefreshOutcome> => {
+    if (refreshPromise.current) return refreshPromise.current;
+    const task = (async (): Promise<RefreshOutcome> => {
+      try {
+        const refresh = await SecureStore.getItemAsync("tayar_refresh_token");
+        if (!refresh) return { status: "invalid" };
+        const response = await apiFetch(API_BASE_URL + "/v1/auth/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refresh }),
+        }, 12000);
+        if (response.status === 400 || response.status === 401) return { status: "invalid" };
+        if (!response.ok) return { status: "unavailable" };
+        const data = await response.json().catch(() => null);
+        if (!data || typeof data.access_token !== "string" || typeof data.refresh_token !== "string") {
+          return { status: "unavailable" };
+        }
+        try {
+          await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
+          await SecureStore.setItemAsync("tayar_access_token", data.access_token);
+        } catch {
+          await Promise.allSettled([
+            SecureStore.deleteItemAsync("tayar_access_token"),
+            SecureStore.deleteItemAsync("tayar_refresh_token"),
+          ]);
+          return { status: "invalid" };
+        }
+        setToken(data.access_token);
+        return { status: "ok", accessToken: data.access_token };
+      } catch {
+        return { status: "unavailable" };
+      }
+    })();
+    refreshPromise.current = task;
+    try { return await task; }
+    finally { if (refreshPromise.current === task) refreshPromise.current = null; }
+  };
+
+  const authenticatedFetch = async (
+    url: string,
+    init: Parameters<typeof fetch>[1] = {},
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> => {
+    const originalHeaders = new Headers(init.headers);
+    const authorization = originalHeaders.get("Authorization") || "";
+    const response = await apiFetch(url, init, timeoutMs);
+    if (response.status !== 401 || !/^Bearer\s+/i.test(authorization)) return response;
+
+    const refreshed = await refreshAccessToken();
+    if (refreshed.status === "invalid") {
+      await signOut();
+      return response;
+    }
+    if (refreshed.status !== "ok") return response;
+
+    const retryHeaders = new Headers(init.headers);
+    retryHeaders.set("Authorization", "Bearer " + refreshed.accessToken);
+    const retried = await apiFetch(url, { ...init, headers: retryHeaders }, timeoutMs);
+    if (retried.status === 401) await signOut();
+    return retried;
   };
 
   useEffect(() => {
@@ -549,7 +654,7 @@ export default function App() {
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + (totalQuestionCount > 0 ? (testOffset + questions.length) % totalQuestionCount : questions.length), { headers: { Authorization: "Bearer " + token } });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
