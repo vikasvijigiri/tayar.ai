@@ -46,6 +46,8 @@ export default function App() {
   const [selectedAnswer, setSelectedAnswer] = useState("");
   const [answerLoading, setAnswerLoading] = useState(false);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
+  const [hint, setHint] = useState("");
+  const [hintLoading, setHintLoading] = useState(false);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
   const questionStartedAt = useRef(Date.now());
 
@@ -242,6 +244,7 @@ export default function App() {
   useEffect(() => {
     setSelectedAnswer("");
     setFeedback(null);
+    setHint("");
     questionStartedAt.current = Date.now();
   }, [questionIndex]);
 
@@ -272,6 +275,27 @@ export default function App() {
       setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
     } finally {
       setAnswerLoading(false);
+    }
+  };
+
+  const requestHint = async () => {
+    const question = questions[questionIndex];
+    if (!question || !token || hintLoading || hint) return;
+    setHintLoading(true);
+    setQuestionError("");
+    try {
+      const response = await fetch(API_BASE_URL + "/v1/ai/hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
+      setHint(data.hint || "A verified hint is not available for this question yet.");
+    } catch (error) {
+      setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+    } finally {
+      setHintLoading(false);
     }
   };
 
@@ -331,6 +355,8 @@ export default function App() {
             <>
               <Text style={s.small}>QUESTION {questionIndex + 1} OF {questions.length}</Text>
               <Text style={s.cardTitle}>{questions[questionIndex].question_text}</Text>
+              {!feedback && <TouchableOpacity onPress={requestHint} disabled={hintLoading||!!hint} style={s.hintButton}>{hintLoading?<ActivityIndicator color={C.teal}/>:<Text style={s.hintButtonText}>{hint?"Hint used":"Need a hint?"}</Text>}</TouchableOpacity>}
+              {hint!==""&&<View style={s.hintPanel}><Text style={s.tag}>HINT</Text><Text style={s.body}>{hint}</Text></View>}
               {(questions[questionIndex].options || []).map((option, idx) => {
                 const raw = typeof option === "string" ? option : (option.text || option.value || option.label || option.key || "");
                 const match = typeof option === "string" ? option.match(/^\s*([A-Za-z0-9]+)[.)：:]?\s*/) : null;
@@ -375,6 +401,7 @@ const s=StyleSheet.create({
   body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
   input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
+  hintButton:{alignSelf:"flex-start",paddingVertical:9,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border,marginTop:4,marginBottom:6},hintButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},hintPanel:{padding:12,borderRadius:12,backgroundColor:C.panel2,marginTop:8,marginBottom:8,gap:6},
   option:{padding:13,borderRadius:12,borderWidth:1,borderColor:C.border,marginTop:9,backgroundColor:C.bg},optionSelected:{borderColor:C.teal,backgroundColor:"#173C3D"},optionText:{color:C.muted,fontSize:13,lineHeight:19},optionTextSelected:{color:C.text,fontWeight:"700"},feedback:{borderWidth:1,borderRadius:12,padding:13,marginTop:14,gap:6},feedbackTitle:{fontSize:13,fontWeight:"800",marginBottom:4},
   authMessage:{fontSize:12,lineHeight:18,marginTop:12},primaryButton:{backgroundColor:C.teal,borderRadius:13,paddingVertical:14,alignItems:"center",justifyContent:"center",marginTop:18,minHeight:48},primaryButtonText:{color:C.bg,fontWeight:"900",fontSize:14},dimmed:{opacity:.65},
   modeSwitch:{paddingVertical:15,alignItems:"center"},modeText:{color:C.blue,fontSize:12,fontWeight:"700"},statusRow:{flexDirection:"row",alignItems:"center",marginBottom:16},statusDot:{width:7,height:7,borderRadius:4,marginRight:8},statusText:{color:C.muted,fontSize:11},
