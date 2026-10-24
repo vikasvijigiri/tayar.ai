@@ -1,8 +1,11 @@
--- Curated starter set: question text, options, answer keys, dates/shifts, and source pages
--- were checked directly against the uploaded PDF. Solution steps below are independently
--- authored and arithmetically checked; they are not claimed to be verbatim PDF explanations.
--- Source: RRB_NTPC_UG_2025_Exam_Maths_Questions_in_English_Hard_To_Easy_Chapterwise.pdf
--- PDF page 3 (printed page 2), Number System section, Q1-Q10.
+-- Curated 14-question starter set across five maths topics.
+-- Question text, options, answer keys, shift/date details and source pages were checked
+-- directly against the uploaded PDFs. Solution steps are independently authored and
+-- arithmetically checked; they are not claimed to be verbatim PDF explanations.
+-- Sources:
+--  * RRB_NTPC_UG_2025_Exam_Maths_Questions_in_English_Hard_To_Easy_Chapterwise.pdf:
+--    PDF page 3 Q1-Q10; PDF page 32 Q283; PDF page 139 Q1173; PDF page 158 Q1295.
+--  * RRB NTPC CBT-2 2024-25 (Undergraduate level)  English.pdf: PDF page 1 Q4.
 -- Safe to re-run: stable topic/question IDs and ON CONFLICT updates are used.
 
 insert into public.topics (id, exam_id, name, slug)
