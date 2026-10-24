@@ -41,9 +41,11 @@ jobs:
           python -m pip install pip-audit
       - name: Compile backend
         run: python -m compileall -q backend/app
-      - name: Run backend tests
+      - name: Lint backend
+        run: ruff check backend/app backend/tests
+      - name: Run backend tests with coverage report
         working-directory: backend
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q --cov=app --cov-report=term-missing
       - name: Audit production Python dependencies
         run: pip-audit -r backend/requirements.txt
 
@@ -58,9 +60,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
       - name: Install mobile dependencies
         working-directory: mobile
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: TypeScript typecheck
         working-directory: mobile
         run: npm run typecheck

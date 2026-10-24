@@ -1,6 +1,8 @@
 import asyncio
+
 from fastapi.testclient import TestClient
-import app.main as main
+
+from app import main
 from app.main import app
 
 client = TestClient(app)
@@ -643,10 +645,10 @@ def test_attempt_history_is_paginated_and_does_not_expose_answer_key(monkeypatch
 
     class FakeResponse:
         status_code = 200
-        headers = {}
 
         def __init__(self, payload):
             self.payload = payload
+            self.headers = {}
 
         def json(self):
             return self.payload
