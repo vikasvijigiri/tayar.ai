@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build:
     name: Build optimized signed Android APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     outputs:
       persistent_signing: ${{ steps.sign_apk.outputs.persistent_signing }}
