@@ -384,7 +384,15 @@ async def list_verified_questions(exam_id: str = "rrb_ntpc", limit: int = Query(
             raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
         response.raise_for_status()
         questions = response.json()
-        return {"exam_id": exam_id, "questions": questions, "limit": limit, "offset": offset}
+        public_fields = (
+            "id", "exam_id", "topic_id", "question_text", "options",
+            "source_document", "source_page", "difficulty", "syllabus_weight",
+        )
+        safe_questions = [
+            {field: question[field] for field in public_fields if field in question}
+            for question in questions
+        ]
+        return {"exam_id": exam_id, "questions": safe_questions, "limit": limit, "offset": offset}
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
