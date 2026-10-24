@@ -548,13 +548,19 @@ async def answer_verified_question(
     question_id: UUID,
     payload: QuestionAnswerIn,
     request: Request,
-    idempotency_key: UUID = Header(..., alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     """Grade on the server and save an attempt; answer keys never come from the client."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise HTTPException(status_code=401, detail="Bearer access token required.")
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Idempotency-Key header is required.")
+    try:
+        idempotency_key = str(UUID(idempotency_key))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Idempotency-Key must be a UUID.") from exc
 
     base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     anon_key = os.getenv("SUPABASE_ANON_KEY", "")
