@@ -363,7 +363,7 @@ export default function App() {
     };
     loadSummary();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token) { setAttemptHistory([]); return; }
@@ -385,12 +385,12 @@ export default function App() {
     };
     loadHistory();
     return () => { active = false; };
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     sessionDeadline.current = null;
     setRemainingSeconds(480);
-  }, [token]);
+  }, [Boolean(token)]);
 
   useEffect(() => {
     if (!token || questions.length === 0) return;
