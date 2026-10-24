@@ -27,6 +27,17 @@ def test_config_cache_policy_and_request_id():
     assert r.headers["X-Request-ID"] == request_id
     assert r.headers["Cache-Control"].startswith("public, max-age=300")
 
+
+def test_api_security_headers_and_dynamic_no_store_policy():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    secure_response = TestClient(app, base_url="https://testserver").get("/health")
+    assert secure_response.headers["Strict-Transport-Security"].startswith("max-age=31536000")
+
 def test_cors_allows_idempotency_and_request_tracing_headers():
     response = client.options(
         "/v1/questions/00000000-0000-4000-8000-000000000001/answer",
