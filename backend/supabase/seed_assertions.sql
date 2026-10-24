@@ -3,6 +3,12 @@ DECLARE
   question_count integer;
   topic_count integer;
 BEGIN
+
+  IF has_table_privilege('authenticated', 'public.attempts', 'INSERT')
+     OR has_table_privilege('anon', 'public.attempts', 'INSERT') THEN
+    RAISE EXCEPTION 'Client roles must not be able to insert practice attempts directly';
+  END IF;
+
   SELECT count(*) INTO question_count
   FROM public.questions
   WHERE exam_id = 'rrb_ntpc' AND active = true AND source_verified = true;

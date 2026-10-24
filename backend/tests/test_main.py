@@ -342,7 +342,8 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
     assert body["source_document"] == "verified.pdf"
     assert calls["post"][0]["json"]["user_id"] == "user-123"
     assert calls["post"][0]["json"]["is_correct"] is True
-    assert calls["post"][0]["headers"]["Authorization"] == "Bearer user-token"
+    assert calls["post"][0]["headers"]["Authorization"] == "Bearer server-only-test-key"
+    assert calls["post"][0]["headers"]["apikey"] == "server-only-test-key"
     assert "answer_key" not in calls["post"][0]["json"]
 
 
@@ -690,3 +691,69 @@ def test_attempt_history_is_paginated_and_does_not_expose_answer_key(monkeypatch
     assert captured_params["user_id"] == "eq.user-123"
     assert captured_params["questions.exam_id"] == "eq.rrb_ntpc"
     assert captured_params["limit"] == "5" and captured_params["offset"] == "10"
+
+
+def test_hint_lock_registry_is_bounded_and_preserves_locked_entries():
+    main._hint_locks.clear()
+    locked = main._get_hint_lock("locked-key")
+
+    async def hold_lock():
+        async with locked:
+            for index in range(main.HINT_LOCK_MAX_ENTRIES + 10):
+                main._get_hint_lock(f"key-{index}")
+            assert main._hint_locks.get("locked-key") is locked
+
+    asyncio.run(hold_lock())
+    assert len(main._hint_locks) <= main.HINT_LOCK_MAX_ENTRIES + 1
+    main._hint_locks.clear()
+
+
+def test_answer_rejects_idempotency_key_reuse_for_different_question(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        def __init__(self, body, status_code=200):
+            self.body = body
+            self.status_code = status_code
+            self.content = b"[]" if isinstance(body, list) else b"{}"
+
+        def json(self):
+            return self.body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                import httpx
+                request = httpx.Request("GET", "https://supabase.example/test")
+                response = httpx.Response(self.status_code, request=request)
+                raise httpx.HTTPStatusError("fake error", request=request, response=response)
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            if url.endswith("/rest/v1/questions"):
+                return FakeResponse([{"id": "00000000-0000-0000-0000-000000000001", "answer_key": "B", "solution_steps": [], "source_document": "verified.pdf", "source_page": "12"}])
+            return FakeResponse([{"idempotency_key": "00000000-0000-4000-8000-000000000001", "question_id": "00000000-0000-0000-0000-000000000002", "is_correct": True, "answer_given": "B", "elapsed_ms": 4200, "confidence": 4}])
+
+        async def post(self, url, params=None, headers=None, json=None):
+            return FakeResponse([])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
+        headers={"Authorization": "Bearer user-token", "Idempotency-Key": "00000000-0000-4000-8000-000000000001"},
+        json={"answer_given": "B", "elapsed_ms": 4200, "confidence": 4},
+    )
+    assert response.status_code == 409
+    assert "different answer" in response.json()["detail"]
