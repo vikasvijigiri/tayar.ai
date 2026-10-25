@@ -147,7 +147,7 @@ jobs:
           PY
           questions_ready=false
           for attempt in $(seq 1 12); do
-            code=$(curl -sS -o /tmp/questions.json -w '%{http_code}' "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0" || true)
+            code=$(curl -sS -o /tmp/questions.json -w '%{http_code}' "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=50&offset=0" || true)
             if [ "$code" = "200" ] && grep -q '"questions"' /tmp/questions.json; then
               questions_ready=true
               break
@@ -167,13 +167,27 @@ jobs:
           payload = json.loads(Path("/tmp/questions.json").read_text())
           questions = payload.get("questions")
           total_count = payload.get("total_count")
-          if not isinstance(questions, list) or len(questions) != 1:
-              raise SystemExit("Expected exactly one question in the smoke-test page")
-          if not isinstance(total_count, int) or total_count < 50:
+          if not isinstance(questions, list) or len(questions) != 50:
+              raise SystemExit(f"Expected a full 50-question verification page, got {len(questions) if isinstance(questions, list) else type(questions).__name__}")
+          if not isinstance(total_count, int) or total_count < 50 or total_count < len(questions):
               raise SystemExit(f"Expected at least 50 live verified questions, got {total_count!r}")
-          if any("answer_key" in question for question in questions):
-              raise SystemExit("Security failure: question-list response exposed answer_key")
-          if not questions[0].get("source_document") or not questions[0].get("source_page"):
-              raise SystemExit("Question response is missing source attribution")
-          print(f"Live question API passed: {total_count} verified questions; answer keys hidden.")
+          ids = [question.get("id") for question in questions if isinstance(question, dict)]
+          normalized_texts = [
+              " ".join(question.get("question_text", "").split()).casefold()
+              for question in questions if isinstance(question, dict)
+          ]
+          if len(ids) != 50 or any(not isinstance(value, str) or not value for value in ids) or len(set(ids)) != 50:
+              raise SystemExit("Question API returned missing or duplicate question IDs")
+          if len(normalized_texts) != 50 or any(not text for text in normalized_texts) or len(set(normalized_texts)) != 50:
+              raise SystemExit("Question API returned empty or duplicate question wording")
+          for index, question in enumerate(questions, start=1):
+              if not isinstance(question, dict) or question.get("exam_id") != "rrb_ntpc":
+                  raise SystemExit(f"Question {index} has an invalid exam identity")
+              if not isinstance(question.get("options"), list) or len(question["options"]) != 4 or not all(isinstance(option, str) and option.strip() for option in question["options"]):
+                  raise SystemExit(f"Question {index} does not contain four non-empty original options")
+              if "answer_key" in question:
+                  raise SystemExit(f"Security failure: question {index} exposed answer_key")
+              if not question.get("source_document") or not question.get("source_page"):
+                  raise SystemExit(f"Question {index} is missing source attribution")
+          print(f"Live question API passed: all 50 question payloads validated; {total_count} verified questions available; answer keys hidden.")
           PY
