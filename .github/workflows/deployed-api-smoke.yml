@@ -32,8 +32,15 @@ jobs:
         run: |
           for attempt in $(seq 1 12); do
             code=$(curl -sS -o /tmp/health.json -w '%{http_code}' "$API_BASE_URL/health" || true)
-            if [ "$code" = "200" ] && grep -q '"status":"ok"' /tmp/health.json; then
-              cat /tmp/health.json
+            if [ "$code" = "200" ]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/health.json").read_text())
+          if payload.get("status") != "ok" or payload.get("service") != "tayar-ai-api" or not isinstance(payload.get("version"), str) or not payload["version"]:
+              raise SystemExit(f"Health returned HTTP 200 with an invalid contract: {payload!r}")
+          print(f"Health contract passed: {payload['service']} v{payload['version']}")
+          PY
               exit 0
             fi
             echo "Health check attempt $attempt returned HTTP $code; retrying..."
@@ -96,13 +103,27 @@ jobs:
             return 1
           }
           wait_get_status "/v1/attempts/summary" "401"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/response.txt").read_text())
+          if payload.get("detail") != "Bearer access token required.":
+              raise SystemExit(f"Summary returned HTTP 401 with an unexpected body: {payload!r}")
+          PY
           wait_get_status "/v1/attempts/history?exam_id=rrb_ntpc" "401"
           wait_post_status "/v1/ai/hint" '{"question_id":"00000000-0000-0000-0000-000000000001","hint_level":"nudge"}' "401"
           wait_post_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" '{"answer_given":"A","elapsed_ms":1000}' "401"
+          wait_post_status "/v1/auth/refresh" '{"refresh_token":"definitely-invalid-refresh-token"}' "401"
+          wait_post_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" '{"answer_given":"E","elapsed_ms":1000}' "422"
+          wait_post_status "/v1/ai/hint" '{"question_id":"not-a-uuid","hint_level":"nudge"}' "422"
           wait_post_status "/v1/attempts/preview" '{"question_id":"demo","topic_id":"percentages","is_correct":false,"elapsed_ms":1000}' "404"
+          wait_get_status "/v1/questions?limit=0" "422"
+          wait_get_status "/v1/questions?limit=51" "422"
+          wait_get_status "/v1/attempts/history?limit=0" "422"
           wait_get_status "/v1/questions?exam_id=unsupported" "422"
           wait_get_status "/v1/attempts/summary?exam_id=unsupported" "422"
           wait_get_status "/v1/attempts/history?exam_id=unsupported" "422"
+          wait_get_status "/v1/this-route-must-not-exist" "404"
           cors_code=$(curl -sS -o /tmp/cors.txt -w '%{http_code}' -X OPTIONS "$API_BASE_URL/v1/questions" -H "Origin: https://untrusted.example" -H "Access-Control-Request-Method: GET" || true)
           if [ "$cors_code" != "400" ] || grep -qi 'access-control-allow-origin' /tmp/cors.txt; then
             echo "Untrusted CORS origin was not rejected safely (HTTP $cors_code)."
