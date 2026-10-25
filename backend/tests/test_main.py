@@ -525,6 +525,28 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
     assert "server-only-test-key" not in response.text
 
 
+def test_readiness_rejects_missing_exam_even_when_database_returns_200(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, *args, **kwargs): return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json()["detail"]["dependencies"]["supabase"] == "exam_not_seeded"
+
+
 def test_readiness_fails_closed_when_supabase_is_unreachable(monkeypatch):
     import httpx
 
