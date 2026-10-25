@@ -143,6 +143,37 @@ def test_hint_requires_verified_server_solution(monkeypatch):
     assert "Verified solution service is not configured" in r.json()["detail"]
 
 
+def test_answer_rejects_nonexistent_multiple_choice_label():
+    response = client.post(
+        "/v1/questions/00000000-0000-4000-8000-000000000001/answer",
+        headers={"Authorization": "Bearer fake", "Idempotency-Key": "00000000-0000-4000-8000-000000000002"},
+        json={"answer_given": "E", "elapsed_ms": 1000},
+    )
+    assert response.status_code == 422
+
+
+def test_upstream_json_contract_helpers_reject_wrong_shapes():
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+        def json(self):
+            return self.payload
+
+    try:
+        main._upstream_list(Response({"not": "a list"}), "invalid list")
+    except main.HTTPException as exc:
+        assert exc.status_code == 502
+    else:
+        raise AssertionError("Object payload was accepted as a list")
+
+    try:
+        main._upstream_object(Response([{"not": "an object"}]), "invalid object")
+    except main.HTTPException as exc:
+        assert exc.status_code == 502
+    else:
+        raise AssertionError("List payload was accepted as an object")
+
+
 def test_question_answer_rejects_malformed_question_id():
     r = client.post("/v1/questions/not-a-uuid/answer", headers={"Authorization": "Bearer fake"}, json={
         "answer_given": "A",
