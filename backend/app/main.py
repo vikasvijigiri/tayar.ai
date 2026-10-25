@@ -399,7 +399,7 @@ async def get_hint(payload: HintIn, request: Request):
             if user_response.status_code in (401, 403):
                 raise HTTPException(status_code=401, detail="Invalid or expired access token.")
             user_response.raise_for_status()
-            user_id = user_response.json().get("id")
+            user_id = _upstream_object(user_response, "Authentication provider returned invalid user data.").get("id")
             if not user_id:
                 raise HTTPException(status_code=401, detail="Supabase did not return a user.")
             question_response = await client.get(
@@ -414,7 +414,7 @@ async def get_hint(payload: HintIn, request: Request):
                 headers=headers,
             )
             question_response.raise_for_status()
-            matches = question_response.json()
+            matches = _upstream_list(question_response, "Verified question service returned invalid question data.")
             if not matches:
                 raise HTTPException(status_code=404, detail="Verified question not found.")
             question = matches[0]
@@ -592,7 +592,7 @@ async def list_verified_questions(
                 if user_response.status_code in (401, 403):
                     raise HTTPException(status_code=401, detail="Invalid or expired access token.")
                 user_response.raise_for_status()
-                user_id = user_response.json().get("id")
+                user_id = _upstream_object(user_response, "Authentication provider returned invalid user data.").get("id")
                 if not user_id:
                     raise HTTPException(status_code=401, detail="Supabase did not return a user.")
 
@@ -609,7 +609,8 @@ async def list_verified_questions(
                     headers=admin_headers,
                 )
                 history_response.raise_for_status()
-                summary = summarize_attempt_rows(history_response.json())
+                history_rows = _upstream_list(history_response, "Attempt history service returned invalid data.")
+                summary = summarize_attempt_rows(history_rows)
                 focus_topic = summary.get("weakest_topic")
                 if focus_topic:
                     topic_response = await client.get(
@@ -623,7 +624,7 @@ async def list_verified_questions(
                         headers=admin_headers,
                     )
                     topic_response.raise_for_status()
-                    topics = topic_response.json()
+                    topics = _upstream_list(topic_response, "Topic service returned invalid data.")
                     if topics:
                         focus_topic_id = topics[0].get("id")
                 if focus_topic_id:
@@ -670,7 +671,7 @@ async def list_verified_questions(
             if response.status_code >= 500:
                 raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
             response.raise_for_status()
-            questions = response.json()
+            questions = _upstream_list(response, "Question database returned invalid question data.")
             content_range = getattr(response, "headers", {}).get("content-range", "")
             try:
                 # The adaptive client relies on the true published-bank size. Never
@@ -743,7 +744,7 @@ async def answer_verified_question(
             if user_response.status_code in (401, 403):
                 raise HTTPException(status_code=401, detail="Invalid or expired access token.")
             user_response.raise_for_status()
-            user_id = user_response.json().get("id")
+            user_id = _upstream_object(user_response, "Authentication provider returned invalid user data.").get("id")
             if not user_id:
                 raise HTTPException(status_code=401, detail="Supabase did not return a user.")
 
@@ -759,7 +760,7 @@ async def answer_verified_question(
                 headers=admin_headers,
             )
             question_response.raise_for_status()
-            matches = question_response.json()
+            matches = _upstream_list(question_response, "Verified question service returned invalid question data.")
             if not matches:
                 raise HTTPException(status_code=404, detail="Verified question not found.")
             question = matches[0]
@@ -787,7 +788,7 @@ async def answer_verified_question(
             if attempt_response.status_code in (401, 403):
                 raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
             attempt_response.raise_for_status()
-            saved_rows = attempt_response.json() if attempt_response.content else []
+            saved_rows = _upstream_list(attempt_response, "Attempt database returned invalid save data.") if attempt_response.content else []
             if not saved_rows:
                 # A concurrent duplicate request may have won the insert; return its saved result.
                 existing_response = await client.get(
@@ -801,7 +802,7 @@ async def answer_verified_question(
                     headers=user_headers,
                 )
                 existing_response.raise_for_status()
-                saved_rows = existing_response.json()
+                saved_rows = _upstream_list(existing_response, "Attempt database returned invalid idempotency data.")
                 if not saved_rows:
                     raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
                 existing = saved_rows[0]
@@ -912,7 +913,7 @@ async def attempts_history(
             if user_response.status_code in (401, 403):
                 raise HTTPException(status_code=401, detail="Invalid or expired access token.")
             user_response.raise_for_status()
-            user_id = user_response.json().get("id")
+            user_id = _upstream_object(user_response, "Authentication provider returned invalid user data.").get("id")
             if not user_id:
                 raise HTTPException(status_code=401, detail="Supabase did not return a user.")
             response = await client.get(
@@ -928,7 +929,7 @@ async def attempts_history(
                 headers=admin_headers,
             )
             response.raise_for_status()
-            rows = response.json()
+            rows = _upstream_list(response, "Attempt history database returned invalid data.")
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
@@ -977,7 +978,7 @@ async def attempts_summary(request: Request, exam_id: Literal["rrb_ntpc"] = "rrb
             if user_response.status_code in (401, 403):
                 raise HTTPException(status_code=401, detail="Invalid or expired access token.")
             user_response.raise_for_status()
-            user_id = user_response.json().get("id")
+            user_id = _upstream_object(user_response, "Authentication provider returned invalid user data.").get("id")
             if not user_id:
                 raise HTTPException(status_code=401, detail="Supabase did not return a user.")
             response = await client.get(
@@ -996,7 +997,7 @@ async def attempts_summary(request: Request, exam_id: Literal["rrb_ntpc"] = "rrb
             if response.status_code >= 500:
                 raise HTTPException(status_code=502, detail="Attempt history database is temporarily unavailable.")
             response.raise_for_status()
-            rows = response.json()
+            rows = _upstream_list(response, "Attempt history database returned invalid data.")
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
