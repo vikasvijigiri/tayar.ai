@@ -575,7 +575,7 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
             calls["post"].append({"url": url, "params": params, "headers": headers, "json": json})
             return FakeResponse(status_code=201, body=[{
                 "user_id": json["user_id"],
-                "question_id": json["question_id"],
+                "question_id": str(json["question_id"]),
                 "idempotency_key": json["idempotency_key"],
                 "is_correct": json["is_correct"],
                 "answer_given": json["answer_given"],
