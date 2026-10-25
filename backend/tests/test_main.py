@@ -68,19 +68,32 @@ def test_hint_rate_limit_blocks_excess_inference():
     main._hint_requests.pop(user_id, None)
 
 
-def test_attempt_preview():
-    r = client.post("/v1/attempts/preview", json={
+def test_attempt_preview_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("ENABLE_ATTEMPT_PREVIEW", raising=False)
+    response = client.post("/v1/attempts/preview", json={
         "question_id": "demo", "topic_id": "percentages", "is_correct": False,
         "elapsed_ms": 12000, "confidence": 2
     })
-    assert r.status_code == 200
-    body = r.json()
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not found."
+
+
+def test_attempt_preview_requires_explicit_opt_in_and_is_not_persisted(monkeypatch):
+    monkeypatch.setenv("ENABLE_ATTEMPT_PREVIEW", "true")
+    response = client.post("/v1/attempts/preview", json={
+        "question_id": "demo", "topic_id": "percentages", "is_correct": False,
+        "elapsed_ms": 12000, "confidence": 2
+    })
+    assert response.status_code == 200
+    body = response.json()
     assert body["accepted"] is True
+    assert body["persisted"] is False
     assert body["attempt"]["elapsed_ms"] == 12000
-    assert "Preview only" in body["note"]
+    assert body["note"] == "Preview only; this attempt was not saved."
 
 
-def test_attempt_rejects_elapsed_time_over_one_hour():
+def test_attempt_rejects_elapsed_time_over_one_hour(monkeypatch):
+    monkeypatch.setenv("ENABLE_ATTEMPT_PREVIEW", "true")
     r = client.post("/v1/attempts/preview", json={
         "question_id": "demo", "topic_id": "percentages", "is_correct": False,
         "elapsed_ms": 3600001
@@ -88,7 +101,8 @@ def test_attempt_rejects_elapsed_time_over_one_hour():
     assert r.status_code == 422
 
 
-def test_attempt_rejects_invalid_confidence():
+def test_attempt_rejects_invalid_confidence(monkeypatch):
+    monkeypatch.setenv("ENABLE_ATTEMPT_PREVIEW", "true")
     r = client.post("/v1/attempts/preview", json={
         "question_id": "demo", "topic_id": "percentages", "is_correct": False,
         "elapsed_ms": 1000, "confidence": 6
