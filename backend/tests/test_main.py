@@ -548,6 +548,50 @@ def test_answer_grades_from_server_key_and_saves_with_user_session(monkeypatch):
     assert "answer_key" not in calls["post"][0]["json"]
 
 
+def test_answer_rejects_http_200_with_invalid_verified_answer_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    writes = []
+
+    class FakeResponse:
+        status_code = 200
+        content = b"[]"
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+        def raise_for_status(self): return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, url, **kwargs):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            return FakeResponse([{
+                "id": "00000000-0000-0000-0000-000000000001",
+                "answer_key": "E",
+                "solution_steps": ["Calculate carefully"],
+                "source_document": "verified.pdf",
+                "source_page": "12",
+                "active": True,
+                "source_verified": True,
+            }])
+        async def post(self, *args, **kwargs):
+            writes.append(kwargs)
+            return FakeResponse([])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/v1/questions/00000000-0000-0000-0000-000000000001/answer",
+        headers={"Authorization": "Bearer user-token", "Idempotency-Key": "00000000-0000-4000-8000-000000000002"},
+        json={"answer_given": "A", "elapsed_ms": 1000},
+    )
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Verified question has an invalid answer key."
+    assert writes == []
+
+
 def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
