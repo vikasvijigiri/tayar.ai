@@ -194,13 +194,27 @@ async def readiness():
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
                 f"{base_url}/rest/v1/exams",
-                params={"select": "id", "limit": "1"},
+                params={"select": "id", "id": "eq.rrb_ntpc", "limit": "1"},
                 headers=headers,
             )
         if response.status_code >= 400:
             raise HTTPException(
                 status_code=503,
                 detail={"status": "not_ready", "dependencies": {"supabase": "unavailable"}},
+            )
+        try:
+            rows = response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"supabase": "invalid_response"}},
+            ) from exc
+        if not isinstance(rows, list) or not any(
+            isinstance(row, dict) and row.get("id") == "rrb_ntpc" for row in rows
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"supabase": "exam_not_seeded"}},
             )
     except httpx.HTTPError:
         raise HTTPException(
