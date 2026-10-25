@@ -318,16 +318,22 @@ export default function App() {
       setQuestionError("");
       try {
         const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
-        const data = await response.json();
-        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
+        const data: unknown = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
+        if (!isRecord(data) || data.exam_id !== "rrb_ntpc" || !Array.isArray(data.questions)
+          || data.questions.length === 0 || !data.questions.every(isQuestion)
+          || !Number.isInteger(data.total_count) || Number(data.total_count) < data.questions.length
+          || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(data.strategy))) {
+          throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+        }
         if (active) {
-          setQuestions(Array.isArray(data.questions) ? data.questions : []);
+          setQuestions(data.questions as Question[]);
           setQuestionIndex(0);
           setTestOffset(0);
-          setCurrentTestSize(Array.isArray(data.questions) ? data.questions.length : 0);
-          setTotalQuestionCount(Number(data.total_count) || (Array.isArray(data.questions) ? data.questions.length : 0));
-          setQuestionStrategy(data.strategy || "baseline");
-          setFocusTopic(data.focus_topic || null);
+          setCurrentTestSize(data.questions.length);
+          setTotalQuestionCount(Number(data.total_count));
+          setQuestionStrategy(data.strategy as "baseline" | "mixed_baseline" | "weak_topic_focus");
+          setFocusTopic(isRecord(data.focus_topic) ? data.focus_topic as { slug: string; topic: string; attempts: number; accuracy_pct: number } : null);
         }
       } catch (error) {
         if (active) setQuestionError(error instanceof Error ? error.message : "Unable to load verified questions.");
@@ -348,8 +354,9 @@ export default function App() {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt summary is not available yet.");
-        const data = await response.json();
-        if (active) setSummary(data as AttemptSummary);
+        const data: unknown = await response.json().catch(() => null);
+        if (!isAttemptSummary(data)) throw new Error("Analytics API returned an invalid summary payload.");
+        if (active) setSummary(data);
       } catch {
         if (active) setSummary(null);
       }
@@ -368,8 +375,9 @@ export default function App() {
           headers: { Authorization: "Bearer " + token },
         });
         if (!response.ok) throw new Error("Attempt history is not available.");
-        const data = await response.json();
-        if (active) setAttemptHistory(Array.isArray(data.attempts) ? data.attempts : []);
+        const data: unknown = await response.json().catch(() => null);
+        if (!isAttemptHistory(data)) throw new Error("History API returned an invalid payload.");
+        if (active) setAttemptHistory(data.attempts);
       } catch {
         if (active) setAttemptHistory([]);
       } finally {
@@ -471,16 +479,17 @@ export default function App() {
           elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
         }),
       });
-      const data = await response.json();
+      const data: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         if (response.status === 401) {
           await signOut();
           throw new Error("Your session expired. Please sign in again.");
         }
-        throw new Error(typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
+        throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
+      if (!isAnswerFeedback(data)) throw new Error("Answer API returned an invalid grading or persistence confirmation.");
       answerRequestKeys.current.delete(question.id);
-      setFeedback(data as AnswerFeedback);
+      setFeedback(data);
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
         const [summaryResponse, historyResponse] = await Promise.all([
@@ -491,10 +500,13 @@ export default function App() {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
-        if (summaryResponse.ok) setSummary(await summaryResponse.json() as AttemptSummary);
+        if (summaryResponse.ok) {
+          const summaryData: unknown = await summaryResponse.json().catch(() => null);
+          if (isAttemptSummary(summaryData)) setSummary(summaryData);
+        }
         if (historyResponse.ok) {
-          const historyData = await historyResponse.json();
-          setAttemptHistory(Array.isArray(historyData.attempts) ? historyData.attempts : []);
+          const historyData: unknown = await historyResponse.json().catch(() => null);
+          if (isAttemptHistory(historyData)) setAttemptHistory(historyData.attempts);
         }
       } catch {
         // Keep the last known summary if analytics are temporarily unavailable.
@@ -523,9 +535,13 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ question_id: question.id, hint_level: "nudge" }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
-      const resolvedHint = data.hint || "A verified hint is not available for this question yet.";
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Hint is temporarily unavailable.");
+      if (!isRecord(data) || typeof data.hint !== "string" || data.hint.trim().length === 0
+        || !(data.provider === null || typeof data.provider === "string")) {
+        throw new Error("Hint API returned an invalid payload.");
+      }
+      const resolvedHint = data.hint;
       hintCache.current.set(cacheKey, resolvedHint);
       setHint(resolvedHint);
     } catch (error) {
