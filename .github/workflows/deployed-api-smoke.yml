@@ -47,7 +47,23 @@ jobs:
           API_BASE_URL: https://tayar-ai-api.onrender.com
         run: |
           curl --fail --silent --show-error "$API_BASE_URL/v1/config" | tee /tmp/config.json
-          grep -q '"rrb_ntpc"' /tmp/config.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/config.json").read_text())
+          exams = payload.get("supported_exams")
+          metrics = payload.get("adaptive_metrics")
+          if not isinstance(exams, list) or not any(isinstance(exam, dict) and exam.get("id") == "rrb_ntpc" for exam in exams):
+              raise SystemExit("Config returned HTTP 200 without the RRB NTPC exam contract")
+          required = {"overall_accuracy", "last_5_accuracy", "weakness", "retention", "time_efficiency"}
+          if not isinstance(metrics, list) or not required.issubset(set(metrics)):
+              raise SystemExit("Config returned HTTP 200 without required adaptive metrics")
+          if not isinstance(payload.get("supabase_url"), str) or not payload["supabase_url"].startswith("https://"):
+              raise SystemExit("Config returned HTTP 200 without a valid Supabase URL")
+          if not isinstance(payload.get("supabase_anon_key"), str) or not payload["supabase_anon_key"]:
+              raise SystemExit("Config returned HTTP 200 without the public Supabase auth key")
+          print("Config contract passed: exam, adaptive metrics and authentication configuration.")
+          PY
           curl --fail --silent --show-error "$API_BASE_URL/metrics" | tee /tmp/metrics.txt
           grep -q 'tayar_http_requests_total' /tmp/metrics.txt
           grep -q 'tayar_http_request_duration_seconds' /tmp/metrics.txt
@@ -80,8 +96,19 @@ jobs:
             return 1
           }
           wait_get_status "/v1/attempts/summary" "401"
+          wait_get_status "/v1/attempts/history?exam_id=rrb_ntpc" "401"
           wait_post_status "/v1/ai/hint" '{"question_id":"00000000-0000-0000-0000-000000000001","hint_level":"nudge"}' "401"
           wait_post_status "/v1/questions/00000000-0000-0000-0000-000000000001/answer" '{"answer_given":"A","elapsed_ms":1000}' "401"
+          wait_post_status "/v1/attempts/preview" '{"question_id":"demo","topic_id":"percentages","is_correct":false,"elapsed_ms":1000}' "404"
+          wait_get_status "/v1/questions?exam_id=unsupported" "422"
+          wait_get_status "/v1/attempts/summary?exam_id=unsupported" "422"
+          wait_get_status "/v1/attempts/history?exam_id=unsupported" "422"
+          cors_code=$(curl -sS -o /tmp/cors.txt -w '%{http_code}' -X OPTIONS "$API_BASE_URL/v1/questions" -H "Origin: https://untrusted.example" -H "Access-Control-Request-Method: GET" || true)
+          if [ "$cors_code" != "400" ] || grep -qi 'access-control-allow-origin' /tmp/cors.txt; then
+            echo "Untrusted CORS origin was not rejected safely (HTTP $cors_code)."
+            cat /tmp/cors.txt
+            exit 1
+          fi
 
       - name: Verify Supabase-backed readiness and verified question delivery
         env:
@@ -107,6 +134,17 @@ jobs:
             echo "Supabase-backed readiness did not pass. Check Render environment variables and deploy status."
             exit 1
           fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/readiness.json").read_text())
+          dependencies = payload.get("dependencies")
+          if payload.get("status") != "ready" or not isinstance(dependencies, dict):
+              raise SystemExit("Readiness returned HTTP 200 without a valid readiness contract")
+          if dependencies.get("supabase") != "connected" or dependencies.get("question_bank") != "available":
+              raise SystemExit(f"Readiness returned HTTP 200 but a critical dependency is unhealthy: {dependencies!r}")
+          print("Readiness contract passed: Supabase and active verified question bank are available.")
+          PY
           questions_ready=false
           for attempt in $(seq 1 12); do
             code=$(curl -sS -o /tmp/questions.json -w '%{http_code}' "$API_BASE_URL/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0" || true)
