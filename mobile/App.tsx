@@ -157,7 +157,6 @@ export default function App() {
           SecureStore.getItemAsync("tayar_access_token"),
           SecureStore.getItemAsync("tayar_refresh_token"),
         ]);
-        if (!savedAccess) return;
         if (savedRefresh) {
           try {
             const response = await apiFetch(`${API_BASE_URL}/v1/auth/refresh`, {
