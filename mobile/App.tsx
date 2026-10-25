@@ -179,7 +179,7 @@ export default function App() {
             });
             if (response.ok) {
               const data = await response.json();
-              if (data.access_token) {
+              if (typeof data.access_token === "string" && data.access_token.length > 0 && typeof data.refresh_token === "string" && data.refresh_token.length > 0) {
                 await SecureStore.setItemAsync("tayar_access_token", data.access_token);
                 if (data.refresh_token) await SecureStore.setItemAsync("tayar_refresh_token", data.refresh_token);
                 if (active) setToken(data.access_token);
@@ -214,7 +214,7 @@ export default function App() {
         const response = await apiFetch(`${API_BASE_URL}/health`);
         if (!response.ok) throw new Error("API health check failed");
         const data = await response.json();
-        if (data.status !== "ok") throw new Error("Unexpected health response");
+        if (data.status !== "ok" || data.service !== "tayar-ai-api" || typeof data.version !== "string" || data.version.length === 0) throw new Error("Unexpected health response");
         if (active) setApiStatus("online");
       } catch {
         if (active) setApiStatus("offline");
