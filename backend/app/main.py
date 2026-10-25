@@ -216,6 +216,37 @@ async def readiness():
                 status_code=503,
                 detail={"status": "not_ready", "dependencies": {"supabase": "exam_not_seeded"}},
             )
+
+        question_response = await client.get(
+            f"{base_url}/rest/v1/questions",
+            params={
+                "select": "id",
+                "exam_id": "eq.rrb_ntpc",
+                "active": "eq.true",
+                "source_verified": "eq.true",
+                "limit": "1",
+            },
+            headers=headers,
+        )
+        if question_response.status_code >= 400:
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"question_bank": "unavailable"}},
+            )
+        try:
+            published_questions = question_response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"question_bank": "invalid_response"}},
+            ) from exc
+        if not isinstance(published_questions, list) or not any(
+            isinstance(question, dict) and question.get("id") for question in published_questions
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "not_ready", "dependencies": {"question_bank": "empty"}},
+            )
     except httpx.HTTPError:
         raise HTTPException(
             status_code=503,
