@@ -185,6 +185,33 @@ def _upstream_list(response, detail: str) -> list[dict]:
     return payload
 
 
+def _validate_public_questions(rows: list[dict], exam_id: str) -> None:
+    """Fail closed if the database returns HTTP 200 with malformed published questions."""
+    seen_ids: set[str] = set()
+    for row in rows:
+        question_id = row.get("id")
+        if not isinstance(question_id, str) or not question_id.strip():
+            raise HTTPException(status_code=502, detail="Question database returned a question without an ID.")
+        if question_id in seen_ids:
+            raise HTTPException(status_code=502, detail="Question database returned duplicate question IDs.")
+        seen_ids.add(question_id)
+        if row.get("exam_id") != exam_id:
+            raise HTTPException(status_code=502, detail="Question database returned a question for the wrong exam.")
+        if not isinstance(row.get("question_text"), str) or not row["question_text"].strip():
+            raise HTTPException(status_code=502, detail="Question database returned empty question wording.")
+        options = row.get("options")
+        if (
+            not isinstance(options, list)
+            or len(options) != 4
+            or any(not isinstance(option, str) or not option.strip() for option in options)
+        ):
+            raise HTTPException(status_code=502, detail="Question database returned invalid multiple-choice options.")
+        if not isinstance(row.get("source_document"), str) or not row["source_document"].strip():
+            raise HTTPException(status_code=502, detail="Question database returned missing source attribution.")
+        if not isinstance(row.get("source_page"), (str, int)) or not str(row["source_page"]).strip():
+            raise HTTPException(status_code=502, detail="Question database returned missing source-page attribution.")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "tayar-ai-api", "version": app.version}
@@ -680,6 +707,7 @@ async def list_verified_questions(
                 raise HTTPException(status_code=502, detail="Question database is temporarily unavailable.")
             response.raise_for_status()
             questions = _upstream_list(response, "Question database returned invalid question data.")
+            _validate_public_questions(questions, exam_id)
             content_range = getattr(response, "headers", {}).get("content-range", "")
             try:
                 # The adaptive client relies on the true published-bank size. Never
@@ -690,6 +718,11 @@ async def list_verified_questions(
                     status_code=502,
                     detail="Question database returned an unverifiable question count.",
                 ) from exc
+            if total_count < len(questions) or (not questions and offset < total_count):
+                raise HTTPException(
+                    status_code=502,
+                    detail="Question database returned inconsistent question-count metadata.",
+                )
 
         public_fields = (
             "id", "exam_id", "topic_id", "question_text", "options",
