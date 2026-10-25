@@ -494,11 +494,24 @@ async def auth_refresh(payload: RefreshCredentials):
             )
         if response.status_code in (400, 401):
             raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "30")
+            raise HTTPException(
+                status_code=503,
+                detail="Authentication provider is rate limiting requests. Retry shortly.",
+                headers={"Retry-After": retry_after},
+            )
         if response.status_code >= 500:
             raise HTTPException(status_code=502, detail="Authentication provider is temporarily unavailable.")
-        if response.status_code >= 400:
-            raise HTTPException(status_code=401, detail="Unable to refresh session. Please sign in again.")
-        return response.json()
+        if response.status_code >= 300:
+            raise HTTPException(status_code=502, detail="Authentication provider rejected the refresh request.")
+        try:
+            result = response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail="Authentication provider returned an invalid response.") from exc
+        if not isinstance(result, dict) or not isinstance(result.get("access_token"), str) or not result.get("access_token"):
+            raise HTTPException(status_code=502, detail="Authentication provider returned an incomplete session.")
+        return result
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
     except ValueError as exc:
