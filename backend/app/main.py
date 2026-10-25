@@ -23,7 +23,7 @@ app = FastAPI(
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "https://app.tayar.ai").split(",") if x.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
+    allow_origins=origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID"],
