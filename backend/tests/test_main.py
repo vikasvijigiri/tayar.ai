@@ -80,6 +80,16 @@ def test_hint_rate_limit_blocks_excess_inference():
     main._hint_requests.pop(user_id, None)
 
 
+def test_exam_endpoints_reject_unsupported_exam_ids():
+    for path in (
+        "/v1/questions?exam_id=unsupported",
+        "/v1/attempts/history?exam_id=unsupported",
+        "/v1/attempts/summary?exam_id=unsupported",
+    ):
+        response = client.get(path)
+        assert response.status_code == 422, (path, response.text)
+
+
 def test_attempt_preview_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("ENABLE_ATTEMPT_PREVIEW", raising=False)
     response = client.post("/v1/attempts/preview", json={
