@@ -478,7 +478,7 @@ def choose_question_strategy(weakest_topic: dict | None, topic_question_count: i
 @app.get("/v1/questions")
 async def list_verified_questions(
     request: Request,
-    exam_id: str = "rrb_ntpc",
+    exam_id: Literal["rrb_ntpc"] = "rrb_ntpc",
     limit: int = Query(default=10, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
 ):
@@ -807,7 +807,7 @@ def summarize_attempt_rows(rows: list[dict]) -> dict:
 @app.get("/v1/attempts/history")
 async def attempts_history(
     request: Request,
-    exam_id: str = "rrb_ntpc",
+    exam_id: Literal["rrb_ntpc"] = "rrb_ntpc",
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
@@ -874,7 +874,7 @@ async def attempts_history(
 
 
 @app.get("/v1/attempts/summary")
-async def attempts_summary(request: Request, exam_id: str = "rrb_ntpc"):
+async def attempts_summary(request: Request, exam_id: Literal["rrb_ntpc"] = "rrb_ntpc"):
     """Compute user-only accuracy, speed and topic signals after verifying the Supabase session."""
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
