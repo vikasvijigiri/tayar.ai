@@ -582,9 +582,14 @@ async def list_verified_questions(
             questions = response.json()
             content_range = getattr(response, "headers", {}).get("content-range", "")
             try:
+                # The adaptive client relies on the true published-bank size. Never
+                # silently substitute the current page length for a failed count.
                 total_count = int(content_range.rsplit("/", 1)[1])
-            except (IndexError, ValueError):
-                total_count = offset + len(questions)
+            except (IndexError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Question database returned an unverifiable question count.",
+                ) from exc
 
         public_fields = (
             "id", "exam_id", "topic_id", "question_text", "options",
