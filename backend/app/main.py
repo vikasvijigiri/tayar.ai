@@ -239,10 +239,14 @@ def config():
 
 @app.post("/v1/attempts/preview")
 def preview_attempt(payload: AttemptIn):
+    """Non-persistent developer preview; disabled unless explicitly enabled."""
+    if os.getenv("ENABLE_ATTEMPT_PREVIEW", "false").strip().lower() not in {"1", "true", "yes"}:
+        raise HTTPException(status_code=404, detail="Not found.")
     return {
         "accepted": True,
+        "persisted": False,
         "attempt": payload.model_dump(),
-        "note": "Preview only; configure authentication and persistence before production use.",
+        "note": "Preview only; this attempt was not saved.",
     }
 
 
