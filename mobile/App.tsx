@@ -648,7 +648,7 @@ export default function App() {
           healthy = body?.status === "ok" && body?.service === "tayar-ai-api";
           detail = healthy ? "HTTP 200 · liveness payload validated" : "HTTP 200 · unexpected liveness payload";
         } else if (key === "ready") {
-          healthy = body?.status === "ready" && body?.dependencies?.supabase === "connected";
+          healthy = body?.status === "ready" && body?.dependencies?.supabase === "connected" && body?.dependencies?.question_bank === "available";
           detail = healthy
             ? body?.dependencies?.ai_provider_configured === false
               ? "HTTP 200 · database ready; no AI provider configured"
