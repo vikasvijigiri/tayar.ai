@@ -627,15 +627,20 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
 
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs):
-            pass
+            self.open = False
+            self.request_count = 0
 
         async def __aenter__(self):
+            self.open = True
             return self
 
         async def __aexit__(self, *args):
+            self.open = False
             return False
 
         async def get(self, url, params=None, headers=None):
+            assert self.open, "Readiness must use the HTTP client only while its context is open"
+            self.request_count += 1
             assert headers["Authorization"] == "Bearer server-only-test-key"
             if url.endswith("/exams"):
                 assert params == {"select": "id", "id": "eq.rrb_ntpc", "limit": "1"}
@@ -653,6 +658,7 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
     body = response.json()
     assert body["status"] == "ready"
     assert body["dependencies"]["supabase"] == "connected"
+    assert body["dependencies"]["question_bank"] == "available"
     assert body["dependencies"]["ai_provider_configured"] is True
     assert "server-only-test-key" not in response.text
 
