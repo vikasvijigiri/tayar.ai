@@ -145,7 +145,7 @@ export default function App() {
   const [focusTopic, setFocusTopic] = useState<{ slug: string; topic: string; attempts: number; accuracy_pct: number } | null>(null);
   const questionStartedAt = useRef(Date.now());
   const sessionDeadline = useRef<number | null>(null);
-  const answerRequestKeys = useRef<Map<string, string>>(new Map());
+  const answerRequestKeys = useRef<Map<string, { idempotencyKey: string; answer_given: string; elapsed_ms: number }>>(new Map());
   // Keep hint results for this app session to avoid repeated paid inference for the same question.
   const hintCache = useRef<Map<string, string>>(new Map());
 
@@ -485,22 +485,30 @@ export default function App() {
     setAnswerLoading(true);
     setQuestionError("");
     try {
-      // Reuse the same key after a timeout/network error; remove it only after a confirmed success.
-      let idempotencyKey = answerRequestKeys.current.get(question.id);
-      if (!idempotencyKey) {
-        idempotencyKey = createIdempotencyKey();
-        answerRequestKeys.current.set(question.id, idempotencyKey);
+      // Persist the entire logical request locally so retries after a lost response
+      // reuse both the idempotency key and the exact original payload.
+      let submission = answerRequestKeys.current.get(question.id);
+      if (!submission) {
+        submission = {
+          idempotencyKey: createIdempotencyKey(),
+          answer_given: selectedAnswer,
+          elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
+        };
+        answerRequestKeys.current.set(question.id, submission);
+      } else if (submission.answer_given !== selectedAnswer) {
+        setQuestionError("A previous submission may already have been saved. Retry the same answer to confirm it before changing your response.");
+        return;
       }
       const response = await apiFetch(API_BASE_URL + "/v1/questions/" + question.id + "/answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
-          "Idempotency-Key": idempotencyKey,
+          "Idempotency-Key": submission.idempotencyKey,
         },
         body: JSON.stringify({
-          answer_given: selectedAnswer,
-          elapsed_ms: Math.max(0, Date.now() - questionStartedAt.current),
+          answer_given: submission.answer_given,
+          elapsed_ms: submission.elapsed_ms,
         }),
       });
       const data: unknown = await response.json().catch(() => null);
@@ -765,7 +773,7 @@ export default function App() {
                 const raw = typeof option === "string" ? option : (option.text || option.value || option.label || option.key || "");
                 const match = typeof option === "string" ? option.match(/^\s*([A-Za-z0-9]+)[.)：:]?\s*/) : null;
                 const key = typeof option === "string" ? ((match || [])[1] || raw) : (option.key || option.label || String.fromCharCode(65 + idx));
-                return <TouchableOpacity key={idx} disabled={!!feedback || answerLoading} onPress={() => setSelectedAnswer(key)} style={[s.option,selectedAnswer===key&&s.optionSelected]}>
+                return <TouchableOpacity key={idx} disabled={!!feedback || answerLoading || answerRequestKeys.current.has(questions[questionIndex].id)} onPress={() => setSelectedAnswer(key)} style={[s.option,selectedAnswer===key&&s.optionSelected]}>
                   <Text style={[s.optionText,selectedAnswer===key&&s.optionTextSelected]}>{raw}</Text>
                 </TouchableOpacity>;
               })}
@@ -776,7 +784,7 @@ export default function App() {
                 <Text style={s.small}>Source: {feedback.source_document}{feedback.source_page?" · page "+feedback.source_page:""}</Text>
               </View>}
               {questionError!==""&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
-              {!feedback ? <TouchableOpacity disabled={!selectedAnswer||answerLoading||remainingSeconds===0} onPress={submitAnswer} style={[s.primaryButton,(!selectedAnswer||answerLoading)&&s.dimmed]}>{answerLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Submit answer</Text>}</TouchableOpacity> :
+              {!feedback ? <TouchableOpacity disabled={!selectedAnswer||answerLoading||remainingSeconds===0} onPress={submitAnswer} style={[s.primaryButton,(!selectedAnswer||answerLoading)&&s.dimmed]}>{answerLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>{answerRequestKeys.current.has(questions[questionIndex].id) ? "Retry same answer" : "Submit answer"}</Text>}</TouchableOpacity> :
                 <TouchableOpacity onPress={questionIndex+1<questions.length?()=>setQuestionIndex(i=>i+1):loadMoreQuestions} disabled={questionLoading} style={s.primaryButton}>{questionLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>{questionIndex+1<questions.length?"Next question":"Load more questions"}</Text>}</TouchableOpacity>}
             </>
           }
