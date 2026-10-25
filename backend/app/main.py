@@ -256,6 +256,7 @@ async def readiness():
         "status": "ready",
         "dependencies": {
             "supabase": "connected",
+            "question_bank": "available",
             "ai_provider_configured": any(
                 os.getenv(key) for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY")
             ),
