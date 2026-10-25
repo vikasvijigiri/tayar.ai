@@ -1145,7 +1145,7 @@ def test_answer_rejects_idempotency_key_reuse_for_different_question(monkeypatch
             if url.endswith("/auth/v1/user"):
                 return FakeResponse({"id": "user-123"})
             if url.endswith("/rest/v1/questions"):
-                return FakeResponse([{"id": "00000000-0000-0000-0000-000000000001", "answer_key": "B", "solution_steps": [], "source_document": "verified.pdf", "source_page": "12"}])
+                return FakeResponse([{"id": "00000000-0000-0000-0000-000000000001", "answer_key": "B", "solution_steps": ["Use the verified method"], "source_document": "verified.pdf", "source_page": "12"}])
             return FakeResponse([{"idempotency_key": "00000000-0000-4000-8000-000000000001", "question_id": "00000000-0000-0000-0000-000000000002", "is_correct": True, "answer_given": "B", "elapsed_ms": 4200, "confidence": 4}])
 
         async def post(self, url, params=None, headers=None, json=None):
