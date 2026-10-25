@@ -215,6 +215,7 @@ def test_question_list_allowlists_public_fields(monkeypatch):
     class FakeResponse:
         status_code = 200
         is_success = True
+        headers = {"content-range": "0-0/1"}
 
         def json(self):
             return [{
