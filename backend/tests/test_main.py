@@ -503,8 +503,11 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
     class FakeResponse:
         status_code = 200
 
+        def __init__(self, body):
+            self.body = body
+
         def json(self):
-            return [{"id": "rrb_ntpc"}]
+            return self.body
 
         def raise_for_status(self):
             return None
@@ -520,10 +523,16 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
             return False
 
         async def get(self, url, params=None, headers=None):
-            assert url == "https://supabase.example/rest/v1/exams"
-            assert params == {"select": "id", "id": "eq.rrb_ntpc", "limit": "1"}
             assert headers["Authorization"] == "Bearer server-only-test-key"
-            return FakeResponse()
+            if url.endswith("/exams"):
+                assert params == {"select": "id", "id": "eq.rrb_ntpc", "limit": "1"}
+                return FakeResponse([{"id": "rrb_ntpc"}])
+            assert url.endswith("/questions")
+            assert params == {
+                "select": "id", "exam_id": "eq.rrb_ntpc", "active": "eq.true",
+                "source_verified": "eq.true", "limit": "1",
+            }
+            return FakeResponse([{"id": "question-123"}])
 
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     response = client.get("/health/ready")
