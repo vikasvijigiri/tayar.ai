@@ -209,33 +209,34 @@ async def readiness():
                 "dependencies": {"supabase": "missing_configuration"},
             },
         )
+
     headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
+            exam_response = await client.get(
                 f"{base_url}/rest/v1/exams",
                 params={"select": "id", "id": "eq.rrb_ntpc", "limit": "1"},
                 headers=headers,
             )
-        if response.status_code >= 400:
-            raise HTTPException(
-                status_code=503,
-                detail={"status": "not_ready", "dependencies": {"supabase": "unavailable"}},
-            )
-        try:
-            rows = response.json()
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise HTTPException(
-                status_code=503,
-                detail={"status": "not_ready", "dependencies": {"supabase": "invalid_response"}},
-            ) from exc
-        if not isinstance(rows, list) or not any(
-            isinstance(row, dict) and row.get("id") == "rrb_ntpc" for row in rows
-        ):
-            raise HTTPException(
-                status_code=503,
-                detail={"status": "not_ready", "dependencies": {"supabase": "exam_not_seeded"}},
-            )
+            if exam_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"status": "not_ready", "dependencies": {"supabase": "unavailable"}},
+                )
+            try:
+                exams = exam_response.json()
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"status": "not_ready", "dependencies": {"supabase": "invalid_response"}},
+                ) from exc
+            if not isinstance(exams, list) or not any(
+                isinstance(row, dict) and row.get("id") == "rrb_ntpc" for row in exams
+            ):
+                raise HTTPException(
+                    status_code=503,
+                    detail={"status": "not_ready", "dependencies": {"supabase": "exam_not_seeded"}},
+                )
 
             question_response = await client.get(
                 f"{base_url}/rest/v1/questions",
@@ -267,11 +268,14 @@ async def readiness():
                     status_code=503,
                     detail={"status": "not_ready", "dependencies": {"question_bank": "empty"}},
                 )
-    except httpx.HTTPError:
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=503,
             detail={"status": "not_ready", "dependencies": {"supabase": "unreachable"}},
-        )
+        ) from exc
+
     return {
         "status": "ready",
         "dependencies": {
