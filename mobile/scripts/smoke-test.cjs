@@ -43,4 +43,9 @@ if (!app.includes("Continue with Google") || !app.includes("code_challenge_metho
 if (!app.includes('authRequest("otp"') || !app.includes('type: "sms"')) throw new Error("SMS OTP send and verification must be implemented");
 if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PASSWORD")) throw new Error("Email/password login must not be shown");
 if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
+if (!app.includes("function isQuestion") || !app.includes("function isAttemptSummary") || !app.includes("function isAttemptHistory")) throw new Error("Runtime API contract validators are missing");
+if (!app.includes("Question API returned an invalid payload") || !app.includes("Answer API returned an invalid grading or persistence confirmation")) throw new Error("Practice flow must validate semantic API payloads");
+if (!app.includes('body.includes("tayar_http_requests_total")') || !app.includes('body.includes("tayar_http_request_duration_seconds")')) throw new Error("Service checker must validate Prometheus response contents");
+if (!app.includes('body?.dependencies?.supabase === "connected"') || !app.includes('body?.dependencies?.question_bank')) throw new Error("Readiness checker must validate critical dependency state");
+if (!app.includes("Clear account-scoped state before returning to the sign-in screen")) throw new Error("Sign-out must clear account-scoped state");
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
