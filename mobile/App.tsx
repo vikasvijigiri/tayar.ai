@@ -50,9 +50,9 @@ type ServiceCheck = { status: "checking" | "online" | "attention"; detail: strin
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
 type Question = { id: string; exam_id: "rrb_ntpc"; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
 type QuestionPage = { exam_id: "rrb_ntpc"; questions: Question[]; total_count: number; strategy: "baseline" | "mixed_baseline" | "weak_topic_focus"; focus_topic: { slug: string; topic: string; attempts: number; accuracy_pct: number } | null };
-type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
+type AnswerFeedback = { saved: true; is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
 type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
-type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
+type AttemptSummary = { exam_id: "rrb_ntpc"; total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
 type AttemptHistoryItem = { question_id: string; question_text: string; topic: string; is_correct: boolean; answer_given: string | null; elapsed_ms: number | null; created_at: string | null; source_document: string | null; source_page: string | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,7 +94,7 @@ function isTopicPerformance(value: unknown): value is TopicPerformance {
 function isAttemptSummary(value: unknown): value is AttemptSummary {
   if (!isRecord(value)) return false;
   const validPercent = (part: unknown) => part === null || typeof part === "number" && part >= 0 && part <= 100;
-  return Number.isInteger(value.total_attempts) && Number(value.total_attempts) >= 0
+  return value.exam_id === "rrb_ntpc" && Number.isInteger(value.total_attempts) && Number(value.total_attempts) >= 0
     && validPercent(value.overall_accuracy_pct) && validPercent(value.last_5_accuracy_pct)
     && validPercent(value.repeat_accuracy_pct)
     && (value.average_time_seconds === null || typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0)
