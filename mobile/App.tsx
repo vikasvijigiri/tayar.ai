@@ -17,7 +17,7 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
 
-const API_BASE_URL = "https://tayar-ai-api.onrender.com";
+const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 
 async function apiFetch(
