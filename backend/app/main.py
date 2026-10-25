@@ -429,8 +429,10 @@ async def get_hint(payload: HintIn, request: Request):
                     params={"select": "name", "id": f"eq.{topic_id}", "limit": "1"},
                     headers=headers,
                 )
-                if topic_response.is_success and topic_response.json():
-                    topic = topic_response.json()[0].get("name") or topic
+                if topic_response.is_success:
+                    topic_rows = _upstream_list(topic_response, "Topic service returned invalid data.")
+                    if topic_rows:
+                        topic = topic_rows[0].get("name") or topic
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
@@ -789,6 +791,18 @@ async def answer_verified_question(
                 raise HTTPException(status_code=403, detail="Attempt was rejected by database access policies.")
             attempt_response.raise_for_status()
             saved_rows = _upstream_list(attempt_response, "Attempt database returned invalid save data.") if attempt_response.content else []
+            if saved_rows:
+                saved = saved_rows[0]
+                if (
+                    str(saved.get("user_id")) != str(user_id)
+                    or str(saved.get("question_id")) != str(question_id)
+                    or str(saved.get("idempotency_key")) != str(idempotency_key)
+                    or saved.get("answer_given") != payload.answer_given
+                    or saved.get("is_correct") is not is_correct
+                    or int(saved.get("elapsed_ms") or 0) != payload.elapsed_ms
+                    or saved.get("confidence") != payload.confidence
+                ):
+                    raise HTTPException(status_code=502, detail="Attempt database response did not confirm the submitted answer.")
             if not saved_rows:
                 # A concurrent duplicate request may have won the insert; return its saved result.
                 existing_response = await client.get(
@@ -808,8 +822,10 @@ async def answer_verified_question(
                 existing = saved_rows[0]
                 # Bind the idempotency key to one exact logical submission.
                 if (
-                    str(existing.get("question_id")) != str(question_id)
+                    str(existing.get("idempotency_key")) != str(idempotency_key)
+                    or str(existing.get("question_id")) != str(question_id)
                     or existing.get("answer_given") != payload.answer_given
+                    or not isinstance(existing.get("is_correct"), bool)
                     or int(existing.get("elapsed_ms") or 0) != payload.elapsed_ms
                     or existing.get("confidence") != payload.confidence
                 ):
