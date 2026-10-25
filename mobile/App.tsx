@@ -528,15 +528,70 @@ export default function App() {
   };
 
   const checkService = async (key: string, path: string) => {
-    setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint…" } }));
+    setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint contract…" } }));
     try {
       const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
-      const ok = response.ok;
-      const notReady = path === "/health/ready" && response.status === 503;
-      setServiceChecks(current => ({ ...current, [key]: { status: ok ? "online" : "attention", detail: response.ok ? `HTTP ${response.status} · reachable` : notReady ? "HTTP 503 · endpoint reachable, but a dependency is not ready" : `HTTP ${response.status} · check service configuration` } }));
-      if (key === "health") setApiStatus(response.ok ? "online" : "offline");
+      let healthy = false;
+      let detail = `HTTP ${response.status} · request failed`;
+
+      if (!response.ok) {
+        const notReady = path === "/health/ready" && response.status === 503;
+        detail = response.status === 401
+          ? "HTTP 401 · sign in to verify this protected endpoint"
+          : notReady
+            ? "HTTP 503 · dependency readiness check failed"
+            : `HTTP ${response.status} · endpoint contract failed`;
+      } else if (key === "metrics") {
+        const body = await response.text();
+        healthy = body.includes("tayar_http_requests_total") && body.includes("tayar_http_request_duration_seconds");
+        detail = healthy ? "HTTP 200 · required Prometheus metrics are present" : "HTTP 200 · required Prometheus metrics are missing";
+      } else {
+        const body: any = await response.json().catch(() => null);
+        if (key === "health") {
+          healthy = body?.status === "ok" && body?.service === "tayar-ai-api";
+          detail = healthy ? "HTTP 200 · liveness payload validated" : "HTTP 200 · unexpected liveness payload";
+        } else if (key === "ready") {
+          healthy = body?.status === "ready" && body?.dependencies?.supabase === "connected";
+          detail = healthy
+            ? body?.dependencies?.ai_provider_configured === false
+              ? "HTTP 200 · database ready; no AI provider configured"
+              : "HTTP 200 · database readiness payload validated"
+            : "HTTP 200 · readiness contract failed or dependencies are not ready";
+        } else if (key === "config") {
+          const exams = body?.supported_exams;
+          const metrics = body?.adaptive_metrics;
+          healthy = Array.isArray(exams) && exams.some((exam: any) => exam?.id === "rrb_ntpc")
+            && Array.isArray(metrics) && metrics.length > 0
+            && typeof body?.supabase_url === "string" && body.supabase_url.startsWith("https://")
+            && typeof body?.supabase_anon_key === "string" && body.supabase_anon_key.length > 0;
+          detail = healthy ? "HTTP 200 · exam, adaptive metrics and auth configuration validated" : "HTTP 200 · required exam or auth configuration is missing";
+        } else if (key === "questions") {
+          const questions = body?.questions;
+          healthy = body?.exam_id === "rrb_ntpc" && Array.isArray(questions) && questions.length === 1
+            && Number.isInteger(body?.total_count) && body.total_count >= 1
+            && typeof questions[0]?.question_text === "string" && questions[0].question_text.length > 0
+            && typeof questions[0]?.source_document === "string" && questions[0].source_document.length > 0
+            && !!questions[0]?.source_page && !("answer_key" in questions[0]);
+          detail = healthy ? `HTTP 200 · verified question and source metadata validated (${body.total_count} available)` : "HTTP 200 · question payload, source attribution, count or answer-key protection failed";
+        } else if (key === "summary") {
+          healthy = Number.isInteger(body?.total_attempts) && Array.isArray(body?.topic_performance)
+            && (body?.overall_accuracy_pct === null || (typeof body?.overall_accuracy_pct === "number" && body.overall_accuracy_pct >= 0 && body.overall_accuracy_pct <= 100))
+            && body?.exam_id === "rrb_ntpc";
+          detail = healthy ? "HTTP 200 · analytics schema and value ranges validated" : "HTTP 200 · analytics payload failed validation";
+        } else if (key === "history") {
+          const attempts = body?.attempts;
+          healthy = body?.exam_id === "rrb_ntpc" && Array.isArray(attempts)
+            && Number.isInteger(body?.limit) && Number.isInteger(body?.offset)
+            && attempts.every((attempt: any) => typeof attempt?.question_text === "string"
+              && typeof attempt?.is_correct === "boolean" && !("answer_key" in attempt));
+          detail = healthy ? `HTTP 200 · history schema validated (${attempts.length} rows)` : "HTTP 200 · history payload or answer-key protection failed";
+        }
+      }
+
+      setServiceChecks(current => ({ ...current, [key]: { status: healthy ? "online" : "attention", detail } }));
+      if (key === "health") setApiStatus(healthy ? "online" : "offline");
     } catch {
-      setServiceChecks(current => ({ ...current, [key]: { status: "attention", detail: "No response · check network or backend availability" } }));
+      setServiceChecks(current => ({ ...current, [key]: { status: "attention", detail: "Network failure or invalid response · check service availability and logs" } }));
       if (key === "health") setApiStatus("offline");
     }
   };
