@@ -212,6 +212,37 @@ def _validate_public_questions(rows: list[dict], exam_id: str) -> None:
             raise HTTPException(status_code=502, detail="Question database returned missing source-page attribution.")
 
 
+def _validate_attempt_rows(rows: list[dict], require_history_details: bool = False) -> None:
+    """Validate database attempt rows before analytics/history code can misreport or crash."""
+    for row in rows:
+        if not isinstance(row.get("question_id"), str) or not row["question_id"].strip():
+            raise HTTPException(status_code=502, detail="Attempt database returned an attempt without a question ID.")
+        if type(row.get("is_correct")) is not bool:
+            raise HTTPException(status_code=502, detail="Attempt database returned an invalid correctness value.")
+        elapsed = row.get("elapsed_ms")
+        if type(elapsed) is not int or elapsed < 0:
+            raise HTTPException(status_code=502, detail="Attempt database returned an invalid elapsed time.")
+        question = row.get("questions")
+        if question is not None and not isinstance(question, dict):
+            raise HTTPException(status_code=502, detail="Attempt database returned invalid question metadata.")
+        if require_history_details:
+            if row.get("answer_given") not in {"A", "B", "C", "D"}:
+                raise HTTPException(status_code=502, detail="Attempt history returned an invalid submitted answer.")
+            if not isinstance(row.get("created_at"), str) or not row["created_at"].strip():
+                raise HTTPException(status_code=502, detail="Attempt history returned an invalid timestamp.")
+            if not isinstance(question, dict):
+                raise HTTPException(status_code=502, detail="Attempt history is missing question metadata.")
+            if not isinstance(question.get("question_text"), str) or not question["question_text"].strip():
+                raise HTTPException(status_code=502, detail="Attempt history returned empty question wording.")
+            if not isinstance(question.get("source_document"), str) or not question["source_document"].strip():
+                raise HTTPException(status_code=502, detail="Attempt history is missing source attribution.")
+            if not isinstance(question.get("source_page"), (str, int)) or not str(question["source_page"]).strip():
+                raise HTTPException(status_code=502, detail="Attempt history is missing source-page attribution.")
+            topic = question.get("topics")
+            if topic is not None and not isinstance(topic, dict):
+                raise HTTPException(status_code=502, detail="Attempt history returned invalid topic metadata.")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "tayar-ai-api", "version": app.version}
@@ -653,6 +684,7 @@ async def list_verified_questions(
                 )
                 history_response.raise_for_status()
                 history_rows = _upstream_list(history_response, "Attempt history service returned invalid data.")
+                _validate_attempt_rows(history_rows)
                 summary = summarize_attempt_rows(history_rows)
                 focus_topic = summary.get("weakest_topic")
                 if focus_topic:
@@ -1009,6 +1041,7 @@ async def attempts_history(
             )
             response.raise_for_status()
             rows = _upstream_list(response, "Attempt history database returned invalid data.")
+            _validate_attempt_rows(rows, require_history_details=True)
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
@@ -1077,6 +1110,7 @@ async def attempts_summary(request: Request, exam_id: Literal["rrb_ntpc"] = "rrb
                 raise HTTPException(status_code=502, detail="Attempt history database is temporarily unavailable.")
             response.raise_for_status()
             rows = _upstream_list(response, "Attempt history database returned invalid data.")
+            _validate_attempt_rows(rows)
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
