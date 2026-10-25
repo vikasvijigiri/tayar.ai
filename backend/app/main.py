@@ -20,7 +20,7 @@ app = FastAPI(
     version="0.1.0",
     description="Exam-agnostic adaptive learning API; RRB NTPC is the first exam.",
 )
-origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
+origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "https://app.tayar.ai").split(",") if x.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins or ["*"],
