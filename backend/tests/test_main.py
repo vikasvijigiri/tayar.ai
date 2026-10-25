@@ -42,6 +42,18 @@ def test_cors_allows_idempotency_and_request_tracing_headers():
     assert "x-request-id" in allowed
 
 
+def test_cors_rejects_untrusted_browser_origins():
+    response = client.options(
+        "/v1/questions",
+        headers={
+            "Origin": "https://untrusted.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_metrics_endpoint_is_prometheus_compatible():
     client.get("/health")
     r = client.get("/metrics")
