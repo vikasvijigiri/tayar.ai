@@ -449,7 +449,13 @@ async def get_hint(payload: HintIn, request: Request):
             if not matches:
                 raise HTTPException(status_code=404, detail="Verified question not found.")
             question = matches[0]
-            steps = question.get("solution_steps") or []
+            steps = question.get("solution_steps")
+            if steps is None:
+                steps = []
+            if not isinstance(steps, list) or any(
+                not isinstance(step, str) or not step.strip() for step in steps
+            ):
+                raise HTTPException(status_code=502, detail="Verified solution service returned invalid solution steps.")
             if not steps:
                 return {"hint": "A verified solution is not available for this question yet.", "provider": None}
             topic = str(question.get("topic_id") or "RRB NTPC")
@@ -463,7 +469,9 @@ async def get_hint(payload: HintIn, request: Request):
                 if topic_response.is_success:
                     topic_rows = _upstream_list(topic_response, "Topic service returned invalid data.")
                     if topic_rows:
-                        topic = topic_rows[0].get("name") or topic
+                        topic_name = topic_rows[0].get("name")
+                        if isinstance(topic_name, str) and topic_name.strip():
+                            topic = topic_name.strip()
     except HTTPException:
         raise
     except httpx.HTTPStatusError:
@@ -805,7 +813,23 @@ async def answer_verified_question(
             if not matches:
                 raise HTTPException(status_code=404, detail="Verified question not found.")
             question = matches[0]
-            is_correct = payload.answer_given == str(question["answer_key"])
+            answer_key = question.get("answer_key")
+            solution_steps = question.get("solution_steps")
+            source_document = question.get("source_document")
+            source_page = question.get("source_page")
+            if answer_key not in {"A", "B", "C", "D"}:
+                raise HTTPException(status_code=502, detail="Verified question has an invalid answer key.")
+            if (
+                not isinstance(solution_steps, list)
+                or not solution_steps
+                or any(not isinstance(step, str) or not step.strip() for step in solution_steps)
+            ):
+                raise HTTPException(status_code=502, detail="Verified question has invalid solution steps.")
+            if not isinstance(source_document, str) or not source_document.strip():
+                raise HTTPException(status_code=502, detail="Verified question is missing source attribution.")
+            if not isinstance(source_page, (str, int)) or not str(source_page).strip():
+                raise HTTPException(status_code=502, detail="Verified question is missing source-page attribution.")
+            is_correct = payload.answer_given == answer_key
 
             # Ignore duplicate keys so a client retry cannot create a second attempt.
             attempt_response = await client.post(
@@ -882,10 +906,10 @@ async def answer_verified_question(
     return {
         "saved": True,
         "is_correct": is_correct,
-        "answer_key": question["answer_key"],
-        "solution_steps": question.get("solution_steps") or [],
-        "source_document": question.get("source_document"),
-        "source_page": question.get("source_page"),
+        "answer_key": answer_key,
+        "solution_steps": solution_steps,
+        "source_document": source_document,
+        "source_page": str(source_page),
     }
 
 
