@@ -166,6 +166,44 @@ def test_refresh_fails_closed_without_supabase_configuration(monkeypatch):
 
 
 
+def test_refresh_preserves_retryable_upstream_status_and_rejects_incomplete_session(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+
+    class FakeResponse:
+        def __init__(self, status_code, payload, headers=None):
+            self.status_code = status_code
+            self.payload = payload
+            self.headers = headers or {}
+
+        def json(self):
+            if isinstance(self.payload, Exception):
+                raise self.payload
+            return self.payload
+
+    class FakeAsyncClient:
+        payload = None
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def post(self, *args, **kwargs):
+            return self.payload
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    FakeAsyncClient.payload = FakeResponse(429, {}, {"Retry-After": "17"})
+    limited = client.post("/v1/auth/refresh", json={"refresh_token": "refresh-token-for-testing"})
+    assert limited.status_code == 503
+    assert limited.headers["Retry-After"] == "17"
+
+    FakeAsyncClient.payload = FakeResponse(200, {"refresh_token": "rotated-without-access"})
+    incomplete = client.post("/v1/auth/refresh", json={"refresh_token": "refresh-token-for-testing"})
+    assert incomplete.status_code == 502
+    assert incomplete.json()["detail"] == "Authentication provider returned an incomplete session."
+
+
 def test_question_list_fails_closed_without_service_role_key(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
