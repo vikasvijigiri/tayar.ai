@@ -54,6 +54,63 @@ type TopicPerformance = { slug: string; topic: string; attempts: number; accurac
 type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
 type AttemptHistoryItem = { question_id: string; question_text: string; topic: string; is_correct: boolean; answer_given: string | null; elapsed_ms: number | null; created_at: string | null; source_document: string | null; source_page: string | null };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isQuestion(value: unknown): value is Question {
+  if (!isRecord(value)) return false;
+  const options = value.options;
+  return typeof value.id === "string" && value.id.length > 0
+    && typeof value.question_text === "string" && value.question_text.trim().length > 0
+    && Array.isArray(options) && options.length === 4
+    && options.every((option) => typeof option === "string" && option.trim().length > 0
+      || isRecord(option) && [option.label, option.text, option.value, option.key].some((part) => typeof part === "string" && part.trim().length > 0))
+    && typeof value.source_document === "string" && value.source_document.trim().length > 0
+    && typeof value.source_page === "string" && value.source_page.trim().length > 0
+    && !("answer_key" in value);
+}
+
+function isTopicPerformance(value: unknown): value is TopicPerformance {
+  return isRecord(value) && typeof value.slug === "string" && typeof value.topic === "string"
+    && Number.isInteger(value.attempts) && Number(value.attempts) >= 0
+    && typeof value.accuracy_pct === "number" && value.accuracy_pct >= 0 && value.accuracy_pct <= 100
+    && typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0;
+}
+
+function isAttemptSummary(value: unknown): value is AttemptSummary {
+  if (!isRecord(value)) return false;
+  const validPercent = (part: unknown) => part === null || typeof part === "number" && part >= 0 && part <= 100;
+  return Number.isInteger(value.total_attempts) && Number(value.total_attempts) >= 0
+    && validPercent(value.overall_accuracy_pct) && validPercent(value.last_5_accuracy_pct)
+    && validPercent(value.repeat_accuracy_pct)
+    && (value.average_time_seconds === null || typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0)
+    && Number.isInteger(value.recent_attempts) && Number(value.recent_attempts) >= 0
+    && (value.weakest_topic === null || isTopicPerformance(value.weakest_topic))
+    && Array.isArray(value.topic_performance) && value.topic_performance.every(isTopicPerformance);
+}
+
+function isAttemptHistory(value: unknown): value is { attempts: AttemptHistoryItem[] } {
+  return isRecord(value) && value.exam_id === "rrb_ntpc" && Array.isArray(value.attempts)
+    && Number.isInteger(value.limit) && Number.isInteger(value.offset)
+    && value.attempts.every((item) => isRecord(item)
+      && typeof item.question_id === "string" && typeof item.question_text === "string"
+      && typeof item.topic === "string" && typeof item.is_correct === "boolean"
+      && (item.answer_given === null || typeof item.answer_given === "string")
+      && (item.elapsed_ms === null || typeof item.elapsed_ms === "number" && item.elapsed_ms >= 0)
+      && (item.created_at === null || typeof item.created_at === "string")
+      && (item.source_document === null || typeof item.source_document === "string")
+      && (item.source_page === null || typeof item.source_page === "string")
+      && !("answer_key" in item));
+}
+
+function isAnswerFeedback(value: unknown): value is AnswerFeedback {
+  return isRecord(value) && value.saved === true && typeof value.is_correct === "boolean"
+    && typeof value.answer_key === "string" && value.answer_key.length > 0
+    && Array.isArray(value.solution_steps) && value.solution_steps.every((step) => typeof step === "string")
+    && typeof value.source_document === "string" && value.source_document.length > 0;
+}
+
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("Home");
   const [serviceChecks, setServiceChecks] = useState<Record<string, ServiceCheck>>({});
