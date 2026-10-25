@@ -566,6 +566,29 @@ def test_readiness_rejects_missing_exam_even_when_database_returns_200(monkeypat
     assert response.json()["detail"]["dependencies"]["supabase"] == "exam_not_seeded"
 
 
+def test_readiness_requires_a_published_verified_question(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "anon")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service")
+
+    class Response:
+        status_code = 200
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    class Client:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, url, **kwargs):
+            return Response([{"id": "rrb_ntpc"}] if url.endswith("/exams") else [])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", Client)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json()["detail"]["dependencies"]["question_bank"] == "empty"
+
+
 def test_readiness_fails_closed_when_supabase_is_unreachable(monkeypatch):
     import httpx
 
