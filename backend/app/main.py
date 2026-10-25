@@ -888,13 +888,26 @@ async def answer_verified_question(
             saved_rows = _upstream_list(attempt_response, "Attempt database returned invalid save data.") if attempt_response.content else []
             if saved_rows:
                 saved = saved_rows[0]
+                required_saved_fields = {
+                    "user_id", "question_id", "idempotency_key", "answer_given",
+                    "is_correct", "elapsed_ms", "confidence",
+                }
                 if (
-                    str(saved.get("user_id")) != str(user_id)
+                    not required_saved_fields.issubset(saved)
+                    or not isinstance(saved.get("user_id"), str)
+                    or not isinstance(saved.get("question_id"), str)
+                    or not isinstance(saved.get("idempotency_key"), str)
+                    or saved.get("answer_given") not in {"A", "B", "C", "D"}
+                    or type(saved.get("is_correct")) is not bool
+                    or type(saved.get("elapsed_ms")) is not int
+                    or saved["elapsed_ms"] < 0
+                    or (saved.get("confidence") is not None and type(saved.get("confidence")) is not int)
+                    or str(saved.get("user_id")) != str(user_id)
                     or str(saved.get("question_id")) != str(question_id)
                     or str(saved.get("idempotency_key")) != str(idempotency_key)
                     or saved.get("answer_given") != payload.answer_given
                     or saved.get("is_correct") is not is_correct
-                    or int(saved.get("elapsed_ms") or 0) != payload.elapsed_ms
+                    or saved.get("elapsed_ms") != payload.elapsed_ms
                     or saved.get("confidence") != payload.confidence
                 ):
                     raise HTTPException(status_code=502, detail="Attempt database response did not confirm the submitted answer.")
@@ -915,13 +928,24 @@ async def answer_verified_question(
                 if not saved_rows:
                     raise HTTPException(status_code=503, detail="Attempt save could not be confirmed; retry safely.")
                 existing = saved_rows[0]
+                required_existing_fields = {
+                    "idempotency_key", "question_id", "is_correct", "answer_given",
+                    "elapsed_ms", "confidence",
+                }
                 # Bind the idempotency key to one exact logical submission.
                 if (
-                    str(existing.get("idempotency_key")) != str(idempotency_key)
+                    not required_existing_fields.issubset(existing)
+                    or not isinstance(existing.get("idempotency_key"), str)
+                    or not isinstance(existing.get("question_id"), str)
+                    or type(existing.get("is_correct")) is not bool
+                    or existing.get("answer_given") not in {"A", "B", "C", "D"}
+                    or type(existing.get("elapsed_ms")) is not int
+                    or existing["elapsed_ms"] < 0
+                    or (existing.get("confidence") is not None and type(existing.get("confidence")) is not int)
+                    or str(existing.get("idempotency_key")) != str(idempotency_key)
                     or str(existing.get("question_id")) != str(question_id)
                     or existing.get("answer_given") != payload.answer_given
-                    or not isinstance(existing.get("is_correct"), bool)
-                    or int(existing.get("elapsed_ms") or 0) != payload.elapsed_ms
+                    or existing.get("elapsed_ms") != payload.elapsed_ms
                     or existing.get("confidence") != payload.confidence
                 ):
                     raise HTTPException(status_code=409, detail="Idempotency-Key was already used for a different answer.")
