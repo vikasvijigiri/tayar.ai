@@ -409,6 +409,8 @@ async def get_hint(payload: HintIn, request: Request):
         raise HTTPException(status_code=502, detail="Verified solution lookup failed.")
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Verified solution service is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Verified solution service returned an invalid response.") from exc
 
     cache_digest = sha256(
         json.dumps({"steps": steps, "topic": topic}, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -491,6 +493,8 @@ async def auth_refresh(payload: RefreshCredentials):
         return response.json()
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Authentication provider returned an invalid response.") from exc
 
 
 class QuestionAnswerIn(BaseModel):
@@ -661,6 +665,8 @@ async def list_verified_questions(
         raise HTTPException(status_code=502, detail="Question database request failed.")
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Question database is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Question database returned an invalid response.") from exc
 
 
 @app.post("/v1/questions/{question_id}/answer")
@@ -773,6 +779,8 @@ async def answer_verified_question(
         raise HTTPException(status_code=502, detail="Question or attempt database request failed.")
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Question or attempt service is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Question or attempt service returned an invalid response.") from exc
 
     return {
         "saved": True,
@@ -886,6 +894,8 @@ async def attempts_history(
         raise HTTPException(status_code=502, detail="Attempt history database request failed.")
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Attempt history database is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Attempt history database returned an invalid response.") from exc
 
     history = []
     for row in rows:
@@ -952,6 +962,8 @@ async def attempts_summary(request: Request, exam_id: Literal["rrb_ntpc"] = "rrb
         raise HTTPException(status_code=502, detail="Attempt history request failed.")
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Attempt history service is temporarily unreachable.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Attempt history service returned an invalid response.") from exc
 
     summary = summarize_attempt_rows(rows)
     summary["exam_id"] = exam_id
