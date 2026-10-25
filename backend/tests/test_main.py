@@ -174,6 +174,64 @@ def test_upstream_json_contract_helpers_reject_wrong_shapes():
         raise AssertionError("List payload was accepted as an object")
 
 
+def test_public_question_contract_rejects_malformed_rows():
+    valid = {
+        "id": "q-1",
+        "exam_id": "rrb_ntpc",
+        "question_text": "A valid question?",
+        "options": ["A) 1", "B) 2", "C) 3", "D) 4"],
+        "source_document": "verified.pdf",
+        "source_page": "12",
+    }
+    main._validate_public_questions([valid], "rrb_ntpc")
+
+    malformed_cases = [
+        ({**valid, "options": ["A) 1", "B) 2"]}, "invalid multiple-choice options"),
+        ({**valid, "exam_id": "other"}, "wrong exam"),
+        ({**valid, "question_text": " "}, "empty question wording"),
+        ({**valid, "source_document": ""}, "missing source attribution"),
+        ({**valid, "source_page": None}, "missing source-page attribution"),
+        ([valid, dict(valid)], "duplicate question IDs"),
+    ]
+    for item, expected_detail in malformed_cases:
+        try:
+            main._validate_public_questions(item if isinstance(item, list) else [item], "rrb_ntpc")
+        except main.HTTPException as exc:
+            assert exc.status_code == 502
+            assert expected_detail in exc.detail
+        else:
+            raise AssertionError(f"Malformed question was accepted: {expected_detail}")
+
+
+def test_question_list_rejects_http_200_with_malformed_options(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-range": "0-0/1"}
+        def json(self):
+            return [{
+                "id": "question-1", "exam_id": "rrb_ntpc",
+                "question_text": "Malformed options question?",
+                "options": ["A) only one"],
+                "source_document": "verified.pdf", "source_page": "1",
+            }]
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, *args, **kwargs): return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get("/v1/questions?limit=1")
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Question database returned invalid multiple-choice options."
+
+
 def test_question_answer_rejects_malformed_question_id():
     r = client.post("/v1/questions/not-a-uuid/answer", headers={"Authorization": "Bearer fake"}, json={
         "answer_given": "A",
