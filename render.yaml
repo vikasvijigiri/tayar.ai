@@ -11,7 +11,9 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.6
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://app.tayar.ai"
+      - key: ENABLE_ATTEMPT_PREVIEW
+        value: "false"
       - key: AI_PROVIDER_ORDER
         value: "groq,gemini,cerebras"
       - key: SUPABASE_URL
