@@ -478,7 +478,7 @@ export default function App() {
   const submitAnswer = async () => {
     const question = questions[questionIndex];
     if (!question || !selectedAnswer || !token || feedback) return;
-    if (remainingSeconds <= 0) {
+    if (remainingSeconds <= 0 && !answerRequestKeys.current.has(question.id)) {
       setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
       return;
     }
