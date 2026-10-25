@@ -305,6 +305,25 @@ export default function App() {
     await SecureStore.deleteItemAsync("tayar_access_token");
     await SecureStore.deleteItemAsync("tayar_refresh_token");
     await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+    // Clear account-scoped state before returning to the sign-in screen.
+    setQuestions([]);
+    setQuestionIndex(0);
+    setTotalQuestionCount(0);
+    setTestOffset(0);
+    setCurrentTestSize(0);
+    setSelectedAnswer("");
+    setFeedback(null);
+    setHint("");
+    setSummary(null);
+    setAttemptHistory([]);
+    setFocusTopic(null);
+    setQuestionStrategy("baseline");
+    setQuestionError("");
+    setServiceChecks({});
+    answerRequestKeys.current.clear();
+    hintCache.current.clear();
+    sessionDeadline.current = null;
+    setRemainingSeconds(480);
     setToken(null);
     setAuthMessage("");
     setAuthError(false);
