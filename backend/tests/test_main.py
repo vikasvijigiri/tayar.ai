@@ -257,6 +257,39 @@ def test_question_list_allowlists_public_fields(monkeypatch):
     assert "internal_note" not in question
 
 
+def test_question_list_fails_closed_when_count_metadata_is_missing(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            return []
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get("/v1/questions?limit=1")
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Question database returned an unverifiable question count."
+
+
 def test_attempt_summary_calculates_accuracy_speed_and_weak_topics():
     rows = [
         {"question_id": "q1", "is_correct": False, "elapsed_ms": 10000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
