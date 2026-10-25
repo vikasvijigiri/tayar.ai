@@ -165,6 +165,26 @@ class HintIn(BaseModel):
     hint_level: Literal["nudge", "method", "steps"] = "nudge"
 
 
+def _upstream_object(response, detail: str) -> dict:
+    try:
+        payload = response.json()
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail=detail) from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail=detail)
+    return payload
+
+
+def _upstream_list(response, detail: str) -> list[dict]:
+    try:
+        payload = response.json()
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail=detail) from exc
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        raise HTTPException(status_code=502, detail=detail)
+    return payload
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "tayar-ai-api", "version": app.version}
@@ -519,7 +539,7 @@ async def auth_refresh(payload: RefreshCredentials):
 
 
 class QuestionAnswerIn(BaseModel):
-    answer_given: str = Field(min_length=1, max_length=200)
+    answer_given: Literal["A", "B", "C", "D"]
     elapsed_ms: int = Field(ge=0, le=3600000)
     confidence: int | None = Field(default=None, ge=1, le=5)
 
