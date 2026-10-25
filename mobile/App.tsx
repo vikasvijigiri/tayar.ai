@@ -621,7 +621,17 @@ export default function App() {
   };
 
   const startNewTest = async () => {
-    if (!token || questionLoading) return;
+    if (!token || questionLoading || answerLoading) return;
+    const unresolvedQuestionIndex = questions.findIndex((item) => answerRequestKeys.current.has(item.id));
+    if (unresolvedQuestionIndex >= 0) {
+      const unresolvedQuestion = questions[unresolvedQuestionIndex];
+      const pending = answerRequestKeys.current.get(unresolvedQuestion.id);
+      setScreen("Practice");
+      setQuestionIndex(unresolvedQuestionIndex);
+      if (pending) setSelectedAnswer(pending.answer_given);
+      setQuestionError("Confirm the pending answer using “Retry same answer” before starting another set.");
+      return;
+    }
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
