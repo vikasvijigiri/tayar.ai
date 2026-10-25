@@ -531,7 +531,9 @@ async def auth_refresh(payload: RefreshCredentials):
             result = response.json()
         except (ValueError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail="Authentication provider returned an invalid response.") from exc
-        if not isinstance(result, dict) or not isinstance(result.get("access_token"), str) or not result.get("access_token"):
+        if (not isinstance(result, dict)
+            or not isinstance(result.get("access_token"), str) or not result.get("access_token")
+            or not isinstance(result.get("refresh_token"), str) or not result.get("refresh_token")):
             raise HTTPException(status_code=502, detail="Authentication provider returned an incomplete session.")
         return result
     except httpx.HTTPError:
