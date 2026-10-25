@@ -340,9 +340,17 @@ async def provider_completion(provider: str, system_prompt: str, user_prompt: st
             )
             response.raise_for_status()
             data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        if not isinstance(data, dict):
+            raise RuntimeError("AI provider returned an invalid response object")
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise RuntimeError("AI provider returned no completion choices")
+        message = choices[0].get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("AI provider returned empty or malformed completion content")
         AI_PROVIDER_REQUESTS.labels(provider, "success").inc()
-        return content
+        return content.strip()
     except Exception:
         AI_PROVIDER_REQUESTS.labels(provider, "error").inc()
         raise
