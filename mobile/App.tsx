@@ -48,7 +48,8 @@ type ApiStatus = "checking" | "online" | "offline";
 type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
 type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
-type Question = { id: string; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
+type Question = { id: string; exam_id: "rrb_ntpc"; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
+type QuestionPage = { exam_id: "rrb_ntpc"; questions: Question[]; total_count: number; strategy: "baseline" | "mixed_baseline" | "weak_topic_focus"; focus_topic: { slug: string; topic: string; attempts: number; accuracy_pct: number } | null };
 type AnswerFeedback = { is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
 type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
 type AttemptSummary = { total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
@@ -61,7 +62,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isQuestion(value: unknown): value is Question {
   if (!isRecord(value)) return false;
   const options = value.options;
-  return typeof value.id === "string" && value.id.length > 0
+  return value.exam_id === "rrb_ntpc" && typeof value.id === "string" && value.id.length > 0
     && typeof value.question_text === "string" && value.question_text.trim().length > 0
     && Array.isArray(options) && options.length === 4
     && options.every((option) => typeof option === "string" && option.trim().length > 0
@@ -69,6 +70,18 @@ function isQuestion(value: unknown): value is Question {
     && typeof value.source_document === "string" && value.source_document.trim().length > 0
     && typeof value.source_page === "string" && value.source_page.trim().length > 0
     && !("answer_key" in value);
+}
+
+function isQuestionPage(value: unknown): value is QuestionPage {
+  if (!isRecord(value) || value.exam_id !== "rrb_ntpc" || !Array.isArray(value.questions)
+    || value.questions.length === 0 || !value.questions.every(isQuestion)
+    || !Number.isInteger(value.total_count) || Number(value.total_count) < value.questions.length
+    || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(value.strategy))) return false;
+  return value.focus_topic === null || isRecord(value.focus_topic)
+    && typeof value.focus_topic.slug === "string" && typeof value.focus_topic.topic === "string"
+    && Number.isInteger(value.focus_topic.attempts) && Number(value.focus_topic.attempts) >= 0
+    && typeof value.focus_topic.accuracy_pct === "number"
+    && value.focus_topic.accuracy_pct >= 0 && value.focus_topic.accuracy_pct <= 100;
 }
 
 function isTopicPerformance(value: unknown): value is TopicPerformance {
@@ -343,20 +356,15 @@ export default function App() {
         const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0", { headers: { Authorization: "Bearer " + token } });
         const data: unknown = await response.json().catch(() => null);
         if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load verified questions.");
-        if (!isRecord(data) || data.exam_id !== "rrb_ntpc" || !Array.isArray(data.questions)
-          || data.questions.length === 0 || !data.questions.every(isQuestion)
-          || !Number.isInteger(data.total_count) || Number(data.total_count) < data.questions.length
-          || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(data.strategy))) {
-          throw new Error("Question API returned an invalid payload or incomplete source attribution.");
-        }
+        if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
         if (active) {
-          setQuestions(data.questions as Question[]);
+          setQuestions(data.questions);
           setQuestionIndex(0);
           setTestOffset(0);
           setCurrentTestSize(data.questions.length);
-          setTotalQuestionCount(Number(data.total_count));
-          setQuestionStrategy(data.strategy as "baseline" | "mixed_baseline" | "weak_topic_focus");
-          setFocusTopic(isRecord(data.focus_topic) ? data.focus_topic as { slug: string; topic: string; attempts: number; accuracy_pct: number } : null);
+          setTotalQuestionCount(data.total_count);
+          setQuestionStrategy(data.strategy);
+          setFocusTopic(data.focus_topic);
         }
       } catch (error) {
         if (active) setQuestionError(error instanceof Error ? error.message : "Unable to load verified questions.");
@@ -592,12 +600,13 @@ export default function App() {
     setQuestionError("");
     try {
       const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
-      const data = await response.json();
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
-      const next = Array.isArray(data.questions) ? data.questions as Question[] : [];
-      setTotalQuestionCount(Number(data.total_count) || Math.max(totalQuestionCount, questions.length + next.length));
-      setQuestionStrategy(data.strategy || "baseline");
-      setFocusTopic(data.focus_topic || null);
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
+      if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      const next = data.questions;
+      setTotalQuestionCount(data.total_count);
+      setQuestionStrategy(data.strategy);
+      setFocusTopic(data.focus_topic);
       if (next.length) {
         setQuestions(current => [...current, ...next]);
         setQuestionIndex(current => current + 1);
@@ -617,13 +626,14 @@ export default function App() {
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
       const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
-      const data = await response.json();
-      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
-      const nextQuestions = Array.isArray(data.questions) ? data.questions : [];
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
+      if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      const nextQuestions = data.questions;
       setQuestions(nextQuestions); setQuestionIndex(0);
       setTestOffset(nextOffset); setCurrentTestSize(nextQuestions.length);
-      setTotalQuestionCount(Number(data.total_count) || Math.max(totalQuestionCount, nextOffset + nextQuestions.length));
-      setQuestionStrategy(data.strategy || "baseline"); setFocusTopic(data.focus_topic || null);
+      setTotalQuestionCount(data.total_count);
+      setQuestionStrategy(data.strategy); setFocusTopic(data.focus_topic);
       if (nextQuestions.length === 0) throw new Error("No additional verified questions are available in this test cycle.");
       setSelectedAnswer(""); setFeedback(null); setHint(""); sessionDeadline.current = Date.now() + 480000;
       setRemainingSeconds(480); questionStartedAt.current = Date.now();
