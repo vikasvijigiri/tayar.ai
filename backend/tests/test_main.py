@@ -796,7 +796,7 @@ def test_question_list_adapts_to_weak_topic_without_exposing_answer_key(monkeypa
                     "id": "q4", "exam_id": "rrb_ntpc", "topic_id": "topic-1",
                     "question_text": "An Algebra question?", "options": ["A) 1", "B) 2", "C) 3", "D) 4"],
                     "answer_key": "B", "source_document": "verified.pdf", "source_page": "4",
-                }])
+                }], headers={"content-range": "0-0/12"})
             raise AssertionError(f"Unexpected URL: {url}")
 
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
