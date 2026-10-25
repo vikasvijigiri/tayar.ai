@@ -804,7 +804,7 @@ def test_question_list_adapts_to_weak_topic_without_exposing_answer_key(monkeypa
         "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=0",
         headers={"Authorization": "Bearer test-user-token"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["strategy"] == "weak_topic_focus"
     assert body["focus_topic"]["slug"] == "algebra"
