@@ -493,6 +493,9 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
     class FakeResponse:
         status_code = 200
 
+        def json(self):
+            return [{"id": "rrb_ntpc"}]
+
         def raise_for_status(self):
             return None
 
@@ -508,7 +511,7 @@ def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatc
 
         async def get(self, url, params=None, headers=None):
             assert url == "https://supabase.example/rest/v1/exams"
-            assert params == {"select": "id", "limit": "1"}
+            assert params == {"select": "id", "id": "eq.rrb_ntpc", "limit": "1"}
             assert headers["Authorization"] == "Bearer server-only-test-key"
             return FakeResponse()
 
