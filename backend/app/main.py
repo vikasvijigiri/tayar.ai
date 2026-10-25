@@ -851,9 +851,12 @@ async def answer_verified_question(
             source_page = question.get("source_page")
             if answer_key not in {"A", "B", "C", "D"}:
                 raise HTTPException(status_code=502, detail="Verified question has an invalid answer key.")
+            # A verified answer can still be graded when explanatory steps are not
+            # available; reject malformed steps, but do not block grading on absence.
+            if solution_steps is None:
+                solution_steps = []
             if (
                 not isinstance(solution_steps, list)
-                or not solution_steps
                 or any(not isinstance(step, str) or not step.strip() for step in solution_steps)
             ):
                 raise HTTPException(status_code=502, detail="Verified question has invalid solution steps.")
