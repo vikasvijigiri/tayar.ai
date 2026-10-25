@@ -494,6 +494,46 @@ def test_ai_provider_success_is_instrumented(monkeypatch):
     assert "tayar_ai_provider_request_duration_seconds" in metrics
 
 
+def test_ai_provider_rejects_malformed_success_payloads(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only-key")
+    invalid_payloads = [
+        [],
+        {},
+        {"choices": []},
+        {"choices": [{}]},
+        {"choices": [{"message": {"content": "   "}}]},
+        {"choices": [{"message": None}]},
+    ]
+
+    for payload in invalid_payloads:
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return payload
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, *args, **kwargs):
+                return FakeResponse()
+
+        monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+        try:
+            asyncio.run(main.provider_completion("groq", "system", "user"))
+        except RuntimeError:
+            continue
+        raise AssertionError(f"Malformed provider payload was accepted: {payload!r}")
+
+
 def test_readiness_reports_connected_supabase_without_leaking_secrets(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
