@@ -295,16 +295,19 @@ export default function App() {
   };
 
     const signOut = async () => {
-    const access = await SecureStore.getItemAsync("tayar_access_token");
+    let access: string | null = null;
+    try { access = await SecureStore.getItemAsync("tayar_access_token"); } catch { /* Continue local sign-out if storage is unavailable. */ }
     if (access) {
       try {
         const cfg = await authConfig();
         await apiFetch(cfg.url + "/auth/v1/logout", { method: "POST", headers: { apikey: cfg.anonKey, Authorization: "Bearer " + access } }, 5000);
-      } catch { /* Local logout still succeeds during provider outages. */ }
+      } catch { /* Local logout still proceeds during provider outages. */ }
     }
-    await SecureStore.deleteItemAsync("tayar_access_token");
-    await SecureStore.deleteItemAsync("tayar_refresh_token");
-    await SecureStore.deleteItemAsync("tayar_oauth_verifier");
+    const cleanup = await Promise.allSettled([
+      SecureStore.deleteItemAsync("tayar_access_token"),
+      SecureStore.deleteItemAsync("tayar_refresh_token"),
+      SecureStore.deleteItemAsync("tayar_oauth_verifier"),
+    ]);
     // Clear account-scoped state before returning to the sign-in screen.
     setQuestions([]);
     setQuestionIndex(0);
@@ -325,8 +328,10 @@ export default function App() {
     sessionDeadline.current = null;
     setRemainingSeconds(480);
     setToken(null);
-    setAuthMessage("");
-    setAuthError(false);
+    setAuthError(cleanup.some((result) => result.status === "rejected"));
+    setAuthMessage(cleanup.some((result) => result.status === "rejected")
+      ? "Signed out in this session, but secure storage cleanup failed. Restart the app before switching accounts."
+      : "");
   };
 
   useEffect(() => {
