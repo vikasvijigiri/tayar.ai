@@ -439,6 +439,60 @@ def test_question_list_fails_closed_when_count_metadata_is_missing(monkeypatch):
     assert response.json()["detail"] == "Question database returned an unverifiable question count."
 
 
+def test_attempt_row_contract_rejects_malformed_database_success_responses():
+    valid = {
+        "question_id": "q1",
+        "is_correct": True,
+        "elapsed_ms": 1000,
+        "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}},
+    }
+    main._validate_attempt_rows([valid])
+    for malformed, detail in [
+        ({**valid, "is_correct": "true"}, "invalid correctness value"),
+        ({**valid, "elapsed_ms": "fast"}, "invalid elapsed time"),
+        ({**valid, "question_id": None}, "without a question ID"),
+        ({**valid, "questions": []}, "invalid question metadata"),
+    ]:
+        try:
+            main._validate_attempt_rows([malformed])
+        except main.HTTPException as exc:
+            assert exc.status_code == 502
+            assert detail in exc.detail
+        else:
+            raise AssertionError(f"Malformed attempt row was accepted: {detail}")
+
+
+def test_attempt_summary_rejects_http_200_with_invalid_attempt_data(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+        def __init__(self, payload): self.payload = payload
+        def json(self): return self.payload
+        def raise_for_status(self): return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, url, **kwargs):
+            if url.endswith("/auth/v1/user"):
+                return FakeResponse({"id": "user-123"})
+            return FakeResponse([{
+                "question_id": "q1",
+                "is_correct": True,
+                "elapsed_ms": "not-a-number",
+                "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}},
+            }])
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.get("/v1/attempts/summary", headers={"Authorization": "Bearer test-token"})
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Attempt database returned an invalid elapsed time."
+
+
 def test_attempt_summary_calculates_accuracy_speed_and_weak_topics():
     rows = [
         {"question_id": "q1", "is_correct": False, "elapsed_ms": 10000, "questions": {"topic_id": "math", "topics": {"name": "Algebra", "slug": "algebra"}}},
