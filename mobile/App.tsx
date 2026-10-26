@@ -596,10 +596,18 @@ export default function App() {
       setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
       return;
     }
+    if (totalQuestionCount <= 0 || questions.length >= totalQuestionCount) {
+      setQuestionError("You've reached the end of the currently published verified questions in this set.");
+      return;
+    }
     setQuestionLoading(true);
     setQuestionError("");
     try {
-      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=10&offset=" + questions.length, { headers: { Authorization: "Bearer " + token } });
+      // Paginate relative to this test's starting offset, not the absolute number
+      // of questions loaded into memory. Cap the final page to the remaining bank.
+      const nextOffset = (testOffset + questions.length) % totalQuestionCount;
+      const nextLimit = Math.min(10, totalQuestionCount - questions.length);
+      const response = await apiFetch(API_BASE_URL + "/v1/questions?exam_id=rrb_ntpc&limit=" + nextLimit + "&offset=" + nextOffset, { headers: { Authorization: "Bearer " + token } });
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
@@ -609,6 +617,7 @@ export default function App() {
       setFocusTopic(data.focus_topic);
       if (next.length) {
         setQuestions(current => [...current, ...next]);
+        setCurrentTestSize(current => current + next.length);
         setQuestionIndex(current => current + 1);
       } else {
         setQuestionError("You've reached the end of the currently published verified questions.");
