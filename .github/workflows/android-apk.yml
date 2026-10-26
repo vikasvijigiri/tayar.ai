@@ -127,6 +127,7 @@ jobs:
           rm -f "$keystore"
 
       - name: Verify package identity, signature and checksum
+        id: verify_apk
         shell: bash
         run: |
           set -euo pipefail
@@ -138,18 +139,25 @@ jobs:
           bytes=$(stat -c%s "$apk")
           echo "APK_BYTES=$bytes" >> "$GITHUB_ENV"
           du -h "$apk"
+          digest="$(sha256sum "$apk" | awk '{print $1}')"
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
           sha256sum "$apk" | tee android-apk-sha256.txt
           if [ "$bytes" -gt $((100 * 1024 * 1024)) ]; then
             echo "APK exceeds the 100 MiB product ceiling"
             exit 1
           fi
+          app_version="$(node -p "require('./app.json').expo.version")"
+          printf 'app_name=Tayar.ai\napp_version=%s\npackage_id=ai.tayar.adaptive\ncommit=%s\nsigning_persistent=%s\nsha256=%s\n' \
+            "$app_version" "$GITHUB_SHA" "${{ steps.sign_apk.outputs.persistent_signing }}" "$digest" > android-apk-build-info.txt
+          cat android-apk-build-info.txt
 
-      - name: Upload signed APK candidate and checksum
+      - name: Upload signed APK, checksum and provenance
         uses: actions/upload-artifact@v4
         with:
           name: tayar-ai-android-apk
           path: |
             mobile/android/app/build/outputs/apk/release/app-release.apk
             mobile/android-apk-sha256.txt
+            mobile/android-apk-build-info.txt
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
