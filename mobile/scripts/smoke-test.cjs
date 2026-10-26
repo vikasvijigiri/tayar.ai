@@ -37,6 +37,9 @@ if (!app.includes('Always-available shortcuts')) throw new Error('Missing persis
 if (!app.includes('8-MINUTE PRACTICE SET')) throw new Error('Missing timed practice session UI');
 if (!app.includes('setRemainingSeconds(480)') || !app.includes('setInterval(')) throw new Error('Missing eight-minute countdown lifecycle');
 if (!app.includes('remainingSeconds===0')) throw new Error('Missing expired-session state');
+if (!app.includes("const nextOffset = (testOffset + questions.length) % totalQuestionCount;")) throw new Error("Practice pagination must respect the current test offset");
+if (!app.includes("const nextLimit = Math.min(10, totalQuestionCount - questions.length);")) throw new Error("Practice pagination must not exceed the remaining verified question bank");
+if (!app.includes("setCurrentTestSize(current => current + next.length)")) throw new Error("New-test rotation must account for questions loaded after the first page");
 console.log('Mobile source smoke tests passed: auth, secure session, API status, verified practice and solution rendering');
 
 if (!app.includes("Continue with Google") || !app.includes("code_challenge_method=s256")) throw new Error("Google OAuth must use PKCE");
