@@ -107,6 +107,10 @@ jobs:
             echo "persistent_signing=true" >> "$GITHUB_OUTPUT"
             echo "Signed APK with the configured persistent release key."
           else
+            if [[ "${GITHUB_REF_TYPE:-branch}" == "tag" ]]; then
+              echo "Tagged release builds require the persistent Android signing secrets; refusing a non-upgradable release APK."
+              exit 1
+            fi
             # Ephemeral signing is only for private QA. Never commit or upload this key.
             signing_password="$(openssl rand -base64 36)"
             keytool -genkeypair -noprompt \
