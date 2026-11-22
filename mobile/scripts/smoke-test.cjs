@@ -125,8 +125,8 @@ for (const requirement of ['accessibilityLabel', 'accessibilityHint', 'keyboardT
 console.log("Shared form checks passed: phone and OTP fields use accessible, tokenized native inputs");
 
 if (!app.includes('from "./src/components/ScreenContainer"')) throw new Error("App screens must use the shared ScreenContainer");
-if ((app.match(/<ScreenContainer\\b/g) || []).length !== 2 || (app.match(/<\\/ScreenContainer>/g) || []).length !== 2) throw new Error("Auth and learner views must use balanced shared ScreenContainer wrappers");
-if (/<ScrollView\\b/.test(app)) throw new Error("Screens must not bypass the shared scrolling container");
+if ((app.match(/<ScreenContainer\b/g) || []).length !== 2 || (app.match(/<\/ScreenContainer>/g) || []).length !== 2) throw new Error("Auth and learner views must use balanced shared ScreenContainer wrappers");
+if (/<ScrollView\b/.test(app)) throw new Error("Screens must not bypass the shared scrolling container");
 const screenContainer = fs.readFileSync('src/components/ScreenContainer.tsx', 'utf8');
 for (const requirement of ['keyboardShouldPersistTaps', 'keyboardDismissMode="on-drag"', 'showsVerticalScrollIndicator', 'overScrollMode="never"', 'colors.background']) {
   if (!screenContainer.includes(requirement)) throw new Error("ScreenContainer missing keyboard, scroll or theme behavior: " + requirement);
