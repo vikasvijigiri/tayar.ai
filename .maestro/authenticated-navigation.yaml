@@ -2,11 +2,13 @@ appId: ai.tayar.adaptive
 tags:
   - authenticated
 ---
-- launchApp
+- launchApp:
+    clearState: true
 - tapOn: "Phone number with country code"
 - inputText: "${TEST_PHONE}"
 - tapOn: "Continue"
 - assertVisible: "SMS verification code"
+- tapOn: "SMS verification code"
 - inputText: "${TEST_OTP}"
 - tapOn: "Verify"
 - assertVisible: "One step closer"
