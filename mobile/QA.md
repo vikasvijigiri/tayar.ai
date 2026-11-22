@@ -81,6 +81,7 @@ The Mobile E2E workflow:
 - Starts a Pixel 7 Pro / Android 15 emulator using `reactivecircus/android-emulator-runner`.
 - Installs Maestro CLI.
 - Runs the smoke and malformed-phone validation flows.
+- Uses a boot-readiness check for Android Package Manager before installing the APK; this is stronger than relying on the emulator boot-complete property alone.
 - Runs authenticated navigation only when both test secrets are configured.
 - Uploads JUnit results, filtered Android logs and a final screenshot.
 
@@ -98,6 +99,10 @@ Never use personal OTPs or production learner accounts. Do not place secrets in 
 ## Physical Android device (optional)
 
 A physical device is not required for the cloud-first workflow. If later needed, register a private self-hosted GitHub Actions runner with labels `self-hosted`, `linux`, `android-device`, connect a dedicated test handset and authorize it with ADB. The manual-only workflow at `.github/workflows/physical-android.yml` builds, installs and runs the smoke/validation flows. Keep the runner private and restrict its repository access. Never expose ADB to the public internet.
+
+## Executable mobile contract tests
+
+`mobile/scripts/contracts-test.cjs` compiles the pure TypeScript API-contract module into a temporary directory and runs Node's built-in test runner. It covers valid and malformed question payloads, four-option and source-attribution requirements, answer-key leakage, question-page envelopes, bounded analytics, finite timing values, history pagination and persisted grading feedback. It does not replace component tests or live backend integration tests.
 
 ## Checked-in flow inventory
 
@@ -153,6 +158,7 @@ Questions used in fixtures and UI tests must be verified directly against the up
 ## Current limitations
 
 - Checked-in UI flows are a starter regression suite, not full end-to-end acceptance coverage.
+- API contract tests cover pure validation logic; React component interaction, visual regression and full live-backend integration tests are still outstanding.
 - The authenticated journey needs a dedicated test Supabase project and fixed test OTP configuration.
 - Google OAuth, live SMS delivery, provider-failure handling and RLS/user-isolation require dedicated integration fixtures.
 - Codespaces does not run Android emulators or attach USB phones. The GitHub-hosted emulator workflow covers the default cloud test path.
