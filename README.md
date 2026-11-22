@@ -25,7 +25,7 @@ Endpoints:
 - `GET /health` — process health
 - `GET /v1/config` — supported exam and adaptive metrics
 - `GET /metrics` — Prometheus request count and latency metrics
-- `POST /v1/auth/signup`, `POST /v1/auth/signin`, `POST /v1/auth/refresh` — Supabase email authentication/session endpoints
+- `POST /v1/auth/refresh` — server-side Supabase session refresh/rotation. The Android app uses Supabase SMS OTP and Google OAuth with PKCE; access/refresh tokens and the OAuth verifier are stored through Expo SecureStore.
 - `GET /v1/questions` — active, source-verified questions only; excludes answer keys
 - `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
 - `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
@@ -101,3 +101,8 @@ For a persistent production APK signature, create and back up a release keystore
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
 - Free-tier quotas, cold starts and usage limits may affect availability.
+
+
+## Production readiness
+
+The engineering release gates, current evidence and outstanding production blockers are tracked in [docs/engineering/production-readiness.md](docs/engineering/production-readiness.md). A passing build or isolated CI job is not a production-readiness approval.
