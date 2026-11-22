@@ -107,9 +107,9 @@ if ((app.match(/<SurfaceCard\b/g) || []).length !== 11 || (app.match(/<\/Surface
 if (!app.includes('from "./src/components/SurfaceCard"')) throw new Error("App must consume the shared SurfaceCard component");
 const surfaceCard = fs.readFileSync('src/components/SurfaceCard.tsx', 'utf8');
 if (!surfaceCard.includes('colors.surface') || !surfaceCard.includes('radii.lg') || !surfaceCard.includes('spacing.lg')) throw new Error("SurfaceCard must use shared design tokens");
-console.log("Shared surface checks passed: ten content cards use the tokenized SurfaceCard");
+console.log("Shared surface checks passed: eleven content cards use the tokenized SurfaceCard");
 
-if ((app.match(/<ActionButton\\b/g) || []).length !== 8) throw new Error("Static learner actions must use the shared ActionButton");
+if ((app.match(/<ActionButton\b/g) || []).length !== 8) throw new Error("Static learner actions must use the shared ActionButton");
 if (!app.includes('from "./src/components/ActionButton"')) throw new Error("App must consume the shared ActionButton");
 const actionButton = fs.readFileSync('src/components/ActionButton.tsx', 'utf8');
 if (!actionButton.includes('accessibilityRole="button"') || !actionButton.includes('accessibilityLabel={accessibilityLabel || label}') || !actionButton.includes('accessibilityState')) throw new Error("ActionButton must expose accessible name and state");
