@@ -739,7 +739,7 @@ export default function App() {
   const checkService = async (key: string, path: string) => {
     setServiceChecks(current => ({ ...current, [key]: { status: "checking", detail: "Checking endpoint contract…" } }));
     try {
-      const response = await apiFetch(API_BASE_URL + path, token ? { headers: { Authorization: "Bearer " + token } } : {}, 12000);
+      const response = await (token ? authenticatedFetch(API_BASE_URL + path, { headers: { Authorization: "Bearer " + token } }, 12000) : apiFetch(API_BASE_URL + path, {}, 12000));
       let healthy = false;
       let detail = `HTTP ${response.status} · request failed`;
 
