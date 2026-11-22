@@ -62,7 +62,9 @@ Maestro Cloud requires an eligible Cloud plan. Do not put API keys, OTPs, user p
 
 ```bash
 maestro test .maestro/smoke.yaml
-maestro test .maestro/practice-navigation.yaml
+maestro test .maestro/auth-validation.yaml
+# Only with a dedicated Supabase test project and fixed test OTP:
+maestro test -e TEST_PHONE=+910000000000 -e TEST_OTP=123456 .maestro/authenticated-navigation.yaml
 ```
 
 ## Physical-device execution
@@ -95,4 +97,39 @@ Questions shown in tests must come from the reviewed source-verified question ba
 
 ## Current limitations
 
-The two starter flows are smoke-level checks, not a complete acceptance suite. The app's live OTP, AI-provider failure modes, persistent test-user lifecycle and backend idempotency require dedicated test fixtures and backend integration tests. Physical-device execution is not enabled by the cloud workflow until a secure device runner or compatible device-farm integration is configured.
+The checked-in flows cover unauthenticated launch, local phone validation and (when test OTP secrets are configured) authenticated navigation across Today, Learn, Practice, Progress and Services, followed by sign-out. They are not a complete acceptance suite. Live SMS delivery, Google OAuth, AI-provider failure modes, persistent test-user lifecycle and backend idempotency require dedicated test fixtures and backend integration tests. Maestro Cloud requires an external account/project and repository secrets. Physical-device execution requires a private self-hosted runner with an authorized Android handset; the workflow is manual-only and does not provision hardware.
+
+
+## Checked-in flow inventory
+
+- .maestro/smoke.yaml — tag smoke; launches the unauthenticated app and checks the Continue and Continue with Google controls.
+- .maestro/auth-validation.yaml — tag smoke; submits a malformed phone number and verifies local validation.
+- .maestro/authenticated-navigation.yaml — tag authenticated; signs in with a configured test phone and fixed test OTP, navigates Today/Learn/Practice/Progress/Services, then signs out.
+- .maestro/config.yaml — registers the three flows and app package identifier.
+
+## Required GitHub Actions secrets
+
+- MAESTRO_CLOUD_API_KEY — Maestro Cloud API key.
+- MAESTRO_PROJECT_ID — Maestro Cloud project ID.
+- TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
+- TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
+
+The Mobile E2E workflow runs smoke-tagged flows on a Pixel 7 / Android 14 Maestro Cloud device when the first two secrets exist. The authenticated flow is separately run only when TEST_PHONE and TEST_OTP are configured. If these secrets are absent, the workflow records the skipped suite in the GitHub Actions summary. Never use production accounts or personal OTPs.
+
+## Expanded acceptance scenarios
+
+Authentication: malformed/valid phone, invalid/expired OTP, resend cooldown, provider rate limit, token refresh, revoked refresh token, session restoration after relaunch, Google OAuth success/cancel/failure and secure sign-out.
+
+Practice: source-verified question delivery, exactly four options, no answer_key in question-list payload, source document/page preservation, empty bank, malformed payload, timeout, option selection, answer submission, correct/incorrect feedback, retry with same idempotency key, duplicate-submit protection, timer expiry/reset and pagination.
+
+Analytics: zero-attempt state, populated summary, topic accuracy, recent history, user isolation and persisted state after relaunch.
+
+Hints: successful response, cache hit, timeout, provider 429/500 and malformed response.
+
+Network: offline launch, reconnect, slow network, connection loss during submission, API 401/403/404/429/500 and request timeout.
+
+Layout/accessibility: 320–360 dp screens, font scale 1.0/1.3/1.5/2.0, keyboard overlap, long question/solution text, scrolling, TalkBack focus order, labels, contrast and touch target size.
+
+Reliability/security: background/foreground, force-stop during practice, crash/ANR inspection, repeated navigation, no tokens/OTP/passwords/answer keys in logs, no service-role or AI-provider secrets in the APK, authenticated writes and RLS isolation.
+
+Manos exploratory loop: list devices → inspect screen → screenshot → interact using semantic selectors → set offline/slow network or font scale → inspect logs and accessibility audit → record the session → export a Maestro flow and review it before committing. Use response mocking only with a dedicated debug/test backend, never production learner traffic.
