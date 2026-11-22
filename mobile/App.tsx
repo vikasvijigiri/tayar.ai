@@ -1007,9 +1007,9 @@ function Metric({label,value,color}:{label:string,value:string,color:string}) {
   const scale = useRef(new Animated.Value(0.94)).current;
   const counter = useRef(new Animated.Value(0)).current;
   const [count,setCount] = useState(0);
-  const numeric = /^-?\\d+(?:\\.\\d+)?/.test(value) && value !== "—";
-  const suffix = numeric ? value.replace(/^-?\\d+(?:\\.\\d+)?/,"") : "";
-  const target = numeric ? Number(value.match(/^-?\\d+(?:\\.\\d+)?/)?.[0]) : 0;
+  const numeric = /^-?\d+(?:\\.\d+)?/.test(value) && value !== "—";
+  const suffix = numeric ? value.replace(/^-?\d+(?:\\.\d+)?/,"") : "";
+  const target = numeric ? Number(value.match(/^-?\d+(?:\\.\d+)?/)?.[0]) : 0;
   useEffect(() => {
     Animated.spring(scale,{toValue:1,friction:6,tension:90,useNativeDriver:true}).start();
     if (!numeric) return;
