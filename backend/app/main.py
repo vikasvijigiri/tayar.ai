@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -249,7 +250,12 @@ def health():
 
 
 @app.get("/metrics", include_in_schema=False)
-def metrics():
+def metrics(authorization: str | None = Header(default=None)):
+    # Set METRICS_BEARER_TOKEN in Render before connecting an external scraper.
+    # When unset, preserve the existing public endpoint for initial deployment.
+    expected_token = os.getenv("METRICS_BEARER_TOKEN", "").strip()
+    if expected_token and not hmac.compare_digest(authorization or "", f"Bearer {expected_token}"):
+        raise HTTPException(status_code=401, detail="Metrics bearer token required.")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
