@@ -82,8 +82,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          maestro test .maestro/smoke.yaml 2>&1 | tee qa-artifacts/smoke.log
-          maestro test .maestro/auth-validation.yaml 2>&1 | tee qa-artifacts/auth-validation.log
+          maestro test --format junit --output qa-artifacts/smoke.xml .maestro/smoke.yaml 2>&1 | tee qa-artifacts/smoke.log
+          maestro test --format junit --output qa-artifacts/auth-validation.xml .maestro/auth-validation.yaml 2>&1 | tee qa-artifacts/auth-validation.log
 
       - name: Run authenticated navigation (when test credentials exist)
         if: ${{ steps.qa_config.outputs.auth_enabled == 'true' }}
@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          maestro test -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml 2>&1 | tee qa-artifacts/authenticated-navigation.log
+          maestro test --format junit --output qa-artifacts/authenticated-navigation.xml -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml 2>&1 | tee qa-artifacts/authenticated-navigation.log
 
       - name: Explain skipped authenticated test
         if: ${{ steps.qa_config.outputs.auth_enabled != 'true' }}
