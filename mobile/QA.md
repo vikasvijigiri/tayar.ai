@@ -10,7 +10,7 @@
 
 ## MCP installation (Linux cloud workspace)
 
-Prerequisites: Java 17+, Node.js 20+, Android SDK platform-tools and an MCP-capable coding agent.
+Prerequisites: Java 17+, Node.js 20+, Android SDK (platform-tools, platform and build-tools), ANDROID_HOME/ANDROID_SDK_ROOT, and an MCP-capable coding agent.
 
 ```bash
 curl -fsSL "https://get.maestro.mobile.dev" | bash
@@ -129,3 +129,16 @@ Layout/accessibility: 320–360 dp screens, font scale 1.0/1.3/1.5/2.0, keyboard
 Reliability/security: background/foreground, force-stop during practice, crash/ANR inspection, repeated navigation, no tokens/OTP/passwords/answer keys in logs, no service-role or AI-provider secrets in the APK, authenticated writes and RLS isolation.
 
 Manos exploratory loop: list devices → inspect screen → screenshot → interact using semantic selectors → set offline/slow network or font scale → inspect logs and accessibility audit → record the session → export a Maestro flow and review it before committing. Use response mocking only with a dedicated debug/test backend, never production learner traffic.
+
+
+## Headless emulator in a cloud workspace
+
+If your cloud IDE provides a Linux VM with hardware virtualization or a supported software-rendered emulator, install an Android system image and start an AVD. Example for API 35:
+
+    sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+    avdmanager create avd -n Tayar_QA_API_35 -k "system-images;android-35;google_apis;x86_64" -d pixel_7
+    emulator -avd Tayar_QA_API_35 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &
+    adb wait-for-device
+    adb devices -l
+
+Some hosted workspaces do not expose KVM/virtualization; in that case use Maestro Cloud for emulator execution instead of trying to launch a nested emulator. Manos and Maestro MCP can control the emulator only after it appears in adb devices.
