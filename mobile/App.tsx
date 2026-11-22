@@ -280,6 +280,8 @@ export default function App() {
   };
 
   const verifyOtp = async () => {
+    sessionEpoch.current += 1;
+    refreshInFlight.current = null;
     setAuthMessage(""); setAuthError(false);
     const normalizedOtp = otp.trim();
     if (!/^\d{4,10}$/.test(normalizedOtp)) { setAuthError(true); setAuthMessage("Enter the SMS code."); return; }
@@ -290,6 +292,8 @@ export default function App() {
   };
 
   const signInWithGoogle = async () => {
+    sessionEpoch.current += 1;
+    refreshInFlight.current = null;
     setAuthMessage(""); setAuthError(false); setAuthLoading(true);
     try {
       const cfg = await authConfig();
