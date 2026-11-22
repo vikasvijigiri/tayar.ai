@@ -385,6 +385,13 @@ export default function App() {
           return { accessToken: null, permanent: true };
         }
         await storeSession(data);
+        if (epoch !== sessionEpoch.current) {
+          await Promise.allSettled([
+            SecureStore.deleteItemAsync("tayar_access_token"),
+            SecureStore.deleteItemAsync("tayar_refresh_token"),
+          ]);
+          return { accessToken: null, permanent: true };
+        }
         return { accessToken: data.access_token, permanent: false };
       } catch {
         return { accessToken: null, permanent: false };
@@ -403,6 +410,7 @@ export default function App() {
     init: Parameters<typeof fetch>[1] = {},
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ): Promise<Response> => {
+    const requestEpoch = sessionEpoch.current;
     const currentToken = tokenRef.current || await SecureStore.getItemAsync("tayar_access_token");
     if (!currentToken) return apiFetch(url, init, timeoutMs);
     const withToken = (accessToken: string) => {
@@ -414,11 +422,12 @@ export default function App() {
     if (response.status !== 401) return response;
     const refreshed = await refreshSession();
     if (!refreshed.accessToken) {
-      if (refreshed.permanent) await signOut();
+      if (refreshed.permanent && requestEpoch === sessionEpoch.current) await signOut();
       return response;
     }
+    if (requestEpoch !== sessionEpoch.current) return response;
     const retried = await apiFetch(url, withToken(refreshed.accessToken), timeoutMs);
-    if (retried.status === 401) await signOut();
+    if (retried.status === 401 && requestEpoch === sessionEpoch.current) await signOut();
     return retried;
   };
 
