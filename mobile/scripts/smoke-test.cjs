@@ -27,8 +27,8 @@ if (!app.includes('topic_performance')) throw new Error('Missing topic mastery d
 if (!app.includes('repeat_accuracy_pct')) throw new Error('Missing repeat accuracy data binding');
 if (!app.includes('solution_steps')) throw new Error('Missing solution display');
 if (!app.includes('/v1/ai/hint')) throw new Error('Missing authenticated AI hint integration');
-if (!app.includes('type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services"')) throw new Error('Missing predictable static screen navigation');
-for (const screen of ['Home','Practice','Analytics','Revision','Services']) {
+if (!app.includes('type AppScreen = "Today" | "Learn" | "Practice" | "Progress" | "Revision" | "Services"')) throw new Error('Missing four-tab learner navigation and secondary screens');
+for (const screen of ['Today','Learn','Practice','Progress','Revision','Services']) {
   if (!app.includes('"' + screen + '"')) throw new Error('Missing navigation destination: ' + screen);
 }
 if (!app.includes('Start a new test / restart set')) throw new Error('Missing restart/new-test action');
