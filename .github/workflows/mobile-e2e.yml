@@ -30,6 +30,9 @@ concurrency:
 
 jobs:
   android-emulator:
+    env:
+      # Make TCG visible to both the emulator action and its child emulator process.
+      ANDROID_I_WANT_MY_TCG: "yes"
     name: Android emulator UI regression
     # Never expose test credentials to fork-originated pull requests.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
@@ -90,18 +93,15 @@ jobs:
         env:
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_OTP: ${{ secrets.TEST_OTP }}
-          # GitHub-hosted Linux runners may not expose nested KVM. The emulator
-          # otherwise exits immediately with "Software CPU emulation ... not supported".
-          ANDROID_I_WANT_MY_TCG: "yes"
         with:
-          api-level: 35
+          api-level: 30
           target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
           disable-spellchecker: true
           emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -accel off
           script: |
             set -e
             mkdir -p qa-artifacts
