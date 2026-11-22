@@ -116,7 +116,7 @@ if (!actionButton.includes('accessibilityRole="button"') || !actionButton.includ
 console.log("Shared action checks passed: eight learner actions use accessible button variants");
 
 if (!app.includes('from "./src/components/FormField"')) throw new Error("Auth forms must use the shared FormField component");
-if ((app.match(/<FormField\\b/g) || []).length !== 2) throw new Error("Phone and OTP forms must use the shared FormField component");
+if ((app.match(/<FormField\b/g) || []).length !== 2) throw new Error("Phone and OTP forms must use the shared FormField component");
 if (app.includes('<TextInput value={phone}') || app.includes('<TextInput value={otp}')) throw new Error("Auth screens must not bypass the shared field primitive");
 const formField = fs.readFileSync('src/components/FormField.tsx', 'utf8');
 for (const requirement of ['accessibilityLabel', 'accessibilityHint', 'keyboardType', 'textContentType', 'selectionColor', 'cursorColor', 'minHeight: 56', 'colors.surfaceRaised']) {
