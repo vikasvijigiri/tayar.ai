@@ -851,8 +851,8 @@ export default function App() {
         
         {screen === "Today" && <>
         
-        <Text style={s.greeting}>{new Date().getHours()<12?"Good morning":new Date().getHours()<17?"Good afternoon":"Good evening"} 👋</Text>
-        <PageHeader eyebrow="YOUR PREPARATION SPACE" title={"One step closer\nto your goal."} description="Your RRB & SSC preparation, made simpler." compact={compactWidth} />
+        
+        <PageHeader eyebrow="YOUR PREPARATION SPACE" leadingContent={<Text style={s.greeting}>{new Date().getHours()<12?"Good morning":new Date().getHours()<17?"Good afternoon":"Good evening"} 👋</Text>} title={"One step closer\nto your goal."} description="Your RRB & SSC preparation, made simpler." compact={compactWidth} />
         <View style={s.momentumCard}><View style={s.momentumIcon}><Text style={s.momentumGlyph}>✦</Text></View><View style={s.momentumCopy}><Text style={s.momentumTitle}>Your journey starts here</Text><Text style={s.momentumText}>{summary && summary.total_attempts > 0 ? `You have completed ${summary.total_attempts} answers. Keep your momentum going.` : "No pressure to know everything. Start with one short practice set and we’ll guide your next step."}</Text></View></View>
         <View style={s.hero}><Text style={s.label}>PRACTICE BASELINE</Text><Text style={s.heroTitle}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded` : "Your first practice session starts the baseline"}</Text><View style={s.track}><View style={[s.fill,{width:percentWidth(summary ? Math.min(100, summary.total_attempts * 2) : 0)}]}/></View><Text style={s.small}>Progress indicator: completed answers, capped at 50 attempts. It is not an exam-readiness prediction.</Text></View>
         <Text style={s.section}>Your learning signals</Text>
