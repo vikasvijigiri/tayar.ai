@@ -68,13 +68,32 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain assembleDebug -PreactNativeArchitectures=x86_64
 
+      - name: Detect configured QA credentials
+        id: qa_config
+        env:
+          MAESTRO_CLOUD_API_KEY: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
+          MAESTRO_PROJECT_ID: ${{ secrets.MAESTRO_PROJECT_ID }}
+          TEST_PHONE: ${{ secrets.TEST_PHONE }}
+          TEST_OTP: ${{ secrets.TEST_OTP }}
+        run: |
+          if [[ -n "$MAESTRO_CLOUD_API_KEY" && -n "$MAESTRO_PROJECT_ID" ]]; then
+            echo "cloud_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cloud_enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "$TEST_PHONE" && -n "$TEST_OTP" ]]; then
+            echo "auth_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "auth_enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Explain missing Maestro Cloud configuration
-        if: ${{ secrets.MAESTRO_CLOUD_API_KEY == '' || secrets.MAESTRO_PROJECT_ID == '' }}
+        if: ${{ steps.qa_config.outputs.cloud_enabled != 'true' }}
         run: |
           echo "Maestro Cloud execution skipped. Add MAESTRO_CLOUD_API_KEY and MAESTRO_PROJECT_ID in repository Actions secrets." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run public smoke and input-validation flows
-        if: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.MAESTRO_PROJECT_ID != '' }}
+        if: ${{ steps.qa_config.outputs.cloud_enabled == 'true' }}
         id: maestro_smoke
         uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
         with:
@@ -88,7 +107,7 @@ jobs:
           timeout: 45
 
       - name: Run authenticated navigation flow
-        if: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.MAESTRO_PROJECT_ID != '' && secrets.TEST_PHONE != '' && secrets.TEST_OTP != '' }}
+        if: ${{ steps.qa_config.outputs.cloud_enabled == 'true' && steps.qa_config.outputs.auth_enabled == 'true' }}
         id: maestro_authenticated
         uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
         with:
@@ -105,7 +124,7 @@ jobs:
             TEST_OTP=${{ secrets.TEST_OTP }}
 
       - name: Explain skipped authenticated suite
-        if: ${{ secrets.TEST_PHONE == '' || secrets.TEST_OTP == '' }}
+        if: ${{ steps.qa_config.outputs.auth_enabled != 'true' }}
         run: |
           echo "Authenticated navigation flow skipped. Configure TEST_PHONE and TEST_OTP using a dedicated Supabase test project with a fixed test OTP." >> "$GITHUB_STEP_SUMMARY"
 
