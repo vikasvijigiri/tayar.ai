@@ -73,6 +73,7 @@ export const layout = {
   contentMaxWidth: 760,
   comfortableReadingWidth: 520,
   minimumTouchTarget: 48,
+  minimumTabHeight: 56,
 } as const;
 
 export const motion = {
