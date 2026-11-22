@@ -17,6 +17,7 @@
 - `GET /health`, `GET /health/ready`, `GET /v1/config`
 - `GET /v1/questions`: validates source attribution, four options and no answer-key/solution leakage
 - `GET /metrics`: validates Prometheus exposition
+- The developer-only attempt preview must remain disabled (HTTP 404)
 - Protected endpoints without credentials must reject access: attempts history/summary, AI hint and answer submission
 - Refresh-token request validation is checked without contacting Supabase Auth
 
