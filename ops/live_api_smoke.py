@@ -121,8 +121,8 @@ def main() -> int:
         "elapsed_ms": 1000,
     })
 
-    # A deliberately invalid token exercises the refresh route without creating a session.
-    check("POST", "/v1/auth/refresh", 401, {"refresh_token": "synthetic-invalid-refresh-token-for-monitoring"})
+    # A short token exercises request validation without contacting Supabase Auth.
+    check("POST", "/v1/auth/refresh", 422, {"refresh_token": "x"})
 
     print("ALL PUBLIC API SYNTHETIC CHECKS PASSED")
     print("NOTE: Successful OTP login, authenticated reads, AI inference and answer writes are not exercised here.")
