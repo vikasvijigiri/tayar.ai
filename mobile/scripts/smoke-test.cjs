@@ -65,3 +65,13 @@ if (!app.includes("tokenRef.current = token") || !app.includes("const currentTok
 if (!app.includes("lastSent?.phone === normalizedPhone") || !app.includes("at: Date.now()")) throw new Error("OTP resend cooldown must be scoped to the destination phone");
 if (!app.includes("expiresAt: Date.now() + 5 * 60 * 1000")) throw new Error("Supabase public configuration must have a short cache lifetime");
 console.log("Auth resilience checks passed: refresh rotation, single-flight, logout race, token freshness and per-phone OTP cooldown");
+
+if (!app.includes('useState<AppScreen>("Today")')) throw new Error("App must open on Today after sign-in");
+for (const tab of ['label:"Today"','label:"Learn"','label:"Practice"','label:"Progress"']) if (!app.includes(tab)) throw new Error("Missing four-tab item: "+tab);
+if (!app.includes('screen === "Learn"') || !app.includes('screen === "Progress"')) throw new Error("Learner and progress screens must be present");
+if (!app.includes("Animated.spring(screenMotion")) throw new Error("Tab transitions must animate smoothly");
+if (!app.includes("Animated.spring(scale")) throw new Error("Progress metrics must animate");
+if (!app.includes("accessibilityLabel={item.label}")) throw new Error("Bottom tabs need accessible labels");
+if (!app.includes("SSC CGL") || !app.includes("SSC CHSL")) throw new Error("SSC course discovery cards are missing");
+if (!app.includes("NIZAMABAD · TELANGANA")) throw new Error("Nizamabad offline classroom card is missing");
+console.log("Learner experience checks passed: four tabs, icons, transitions, animated metrics, beginner onboarding, RRB/SSC discovery and Nizamabad classroom");
