@@ -23,6 +23,7 @@ import { PageHeader } from "./src/components/PageHeader";
 import { SurfaceCard } from "./src/components/SurfaceCard";
 import { ActionButton } from "./src/components/ActionButton";
 import { FormField } from "./src/components/FormField";
+import { ScreenContainer } from "./src/components/ScreenContainer";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -559,7 +560,7 @@ export default function App() {
       <SafeAreaView style={s.safe}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
         <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:layout.comfortableReadingWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
+          <ScreenContainer contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:layout.comfortableReadingWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
             <View style={s.minimalAuth}>
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
               <SurfaceCard>
@@ -577,7 +578,7 @@ export default function App() {
                 {authMessage !== "" && <Text accessibilityRole="alert" style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
               </SurfaceCard>
             </View>
-          </ScrollView>
+          </ScreenContainer>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
@@ -843,7 +844,7 @@ export default function App() {
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
       <Animated.View style={{flex:1,opacity:screenMotion,transform:[{translateY:screenMotion.interpolate({inputRange:[0.94,1],outputRange:[12,0]})}]}}>
-      <ScrollView style={s.contentScroll} contentContainerStyle={[s.page,{paddingHorizontal:pageGutter,width:"100%",maxWidth:contentMaxWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
+      <ScreenContainer style={s.contentScroll} contentContainerStyle={[s.page,{paddingHorizontal:pageGutter,width:"100%",maxWidth:contentMaxWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
         <View style={s.top}>
           <View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View>
           <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Services")} accessibilityLabel="Open profile and settings" style={s.avatar}><Text style={{color:C.teal,fontWeight:"900",fontSize:17}}>V</Text></TouchableOpacity>
@@ -986,7 +987,7 @@ export default function App() {
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.crossLink}><Text style={s.crossLinkText}>Back to practice →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>Open analytics →</Text></TouchableOpacity></View>
         </>}
         <Text style={s.footer}>Small steps. Strong preparation. · Tayar.ai</Text>
-      </ScrollView>
+      </ScreenContainer>
     </Animated.View>
       <View style={[s.bottomBar,{paddingBottom:Math.max(8,Math.round(8*fontScale)),paddingHorizontal:compactWidth?4:10}]}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={[s.tabButton,{minWidth:layout.minimumTouchTarget,minHeight:layout.minimumTabHeight}]}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
     </SafeAreaView>
