@@ -44,6 +44,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Install Maestro CLI if needed
+        run: |
+          if ! command -v maestro >/dev/null 2>&1; then
+            curl -fsSL "https://get.maestro.mobile.dev" | bash
+          fi
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
       - name: Verify Android device and toolchain
         shell: bash
         run: |
