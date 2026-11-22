@@ -114,3 +114,12 @@ if (!app.includes('from "./src/components/ActionButton"')) throw new Error("App 
 const actionButton = fs.readFileSync('src/components/ActionButton.tsx', 'utf8');
 if (!actionButton.includes('accessibilityRole="button"') || !actionButton.includes('accessibilityLabel={accessibilityLabel || label}') || !actionButton.includes('accessibilityState')) throw new Error("ActionButton must expose accessible name and state");
 console.log("Shared action checks passed: eight learner actions use accessible button variants");
+
+if (!app.includes('from "./src/components/FormField"')) throw new Error("Auth forms must use the shared FormField component");
+if ((app.match(/<FormField\\b/g) || []).length !== 2) throw new Error("Phone and OTP forms must use the shared FormField component");
+if (app.includes('<TextInput value={phone}') || app.includes('<TextInput value={otp}')) throw new Error("Auth screens must not bypass the shared field primitive");
+const formField = fs.readFileSync('src/components/FormField.tsx', 'utf8');
+for (const requirement of ['accessibilityLabel', 'accessibilityHint', 'keyboardType', 'textContentType', 'selectionColor', 'cursorColor', 'minHeight: 56', 'colors.surfaceRaised']) {
+  if (!formField.includes(requirement)) throw new Error("FormField missing accessibility, platform or design requirement: " + requirement);
+}
+console.log("Shared form checks passed: phone and OTP fields use accessible, tokenized native inputs");
