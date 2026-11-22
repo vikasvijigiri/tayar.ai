@@ -23,9 +23,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  maestro-cloud:
-    name: Android UI regression (Maestro Cloud)
-    # Never expose repository secrets to fork-originated pull requests.
+  android-emulator:
+    name: Android emulator UI regression
+    # Never expose test credentials to fork-originated pull requests.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -46,7 +46,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Verify preinstalled Android SDK
+      - name: Verify Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -d "$ANDROID_HOME"
@@ -66,85 +66,51 @@ jobs:
         working-directory: mobile
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build x86_64-compatible debug APK for Maestro Cloud
+      - name: Build x86_64 debug APK
         working-directory: mobile
         run: |
           cd android
           chmod +x gradlew
           ./gradlew --no-daemon --console=plain assembleDebug -PreactNativeArchitectures=x86_64
 
-      - name: Detect configured QA credentials
-        id: qa_config
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Run Maestro flows on hosted Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
         env:
-          MAESTRO_CLOUD_API_KEY: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
-          MAESTRO_PROJECT_ID: ${{ secrets.MAESTRO_PROJECT_ID }}
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_OTP: ${{ secrets.TEST_OTP }}
-        run: |
-          if [[ -n "$MAESTRO_CLOUD_API_KEY" && -n "$MAESTRO_PROJECT_ID" ]]; then
-            echo "cloud_enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "cloud_enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-          if [[ -n "$TEST_PHONE" && -n "$TEST_OTP" ]]; then
-            echo "auth_enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "auth_enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Explain missing Maestro Cloud configuration
-        if: ${{ steps.qa_config.outputs.cloud_enabled != 'true' }}
-        run: |
-          echo "Maestro Cloud execution skipped. Add MAESTRO_CLOUD_API_KEY and MAESTRO_PROJECT_ID in repository Actions secrets." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run public smoke and input-validation flows
-        if: ${{ steps.qa_config.outputs.cloud_enabled == 'true' }}
-        id: maestro_smoke
-        uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
         with:
-          api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
-          project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
-          app-file: mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          workspace: .maestro
-          include-tags: smoke
-          device-model: pixel_7
-          device-os: android-34
-          timeout: 45
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          disable-spellchecker: true
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -e
+            mkdir -p qa-artifacts
+            trap 'adb logcat -d -v time 2>/dev/null | grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|tayar" > qa-artifacts/android-crash-diagnostics.log || true; adb exec-out screencap -p > qa-artifacts/final-screen.png 2>/dev/null || true' EXIT
+            adb install -r mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            maestro test --format junit --output qa-artifacts/smoke.xml .maestro/smoke.yaml
+            maestro test --format junit --output qa-artifacts/auth-validation.xml .maestro/auth-validation.yaml
+            if [ -n "${TEST_PHONE:-}" ] && [ -n "${TEST_OTP:-}" ]; then
+              maestro test --format junit --output qa-artifacts/authenticated-navigation.xml -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml
+            else
+              echo "Authenticated journey skipped: configure TEST_PHONE and TEST_OTP using a dedicated non-production Supabase test project." >> "$GITHUB_STEP_SUMMARY"
+            fi
 
-      - name: Run authenticated navigation flow
-        if: ${{ steps.qa_config.outputs.cloud_enabled == 'true' && steps.qa_config.outputs.auth_enabled == 'true' }}
-        id: maestro_authenticated
-        uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
-        with:
-          api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
-          project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
-          app-file: mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          workspace: .maestro
-          include-tags: authenticated
-          device-model: pixel_7
-          device-os: android-34
-          timeout: 45
-          env: |
-            TEST_PHONE=${{ secrets.TEST_PHONE }}
-            TEST_OTP=${{ secrets.TEST_OTP }}
-
-      - name: Explain skipped authenticated suite
-        if: ${{ steps.qa_config.outputs.auth_enabled != 'true' }}
-        run: |
-          echo "Authenticated navigation flow skipped. Configure TEST_PHONE and TEST_OTP using a dedicated Supabase test project with a fixed test OTP." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Publish Maestro Cloud report links
+      - name: Upload emulator QA evidence
         if: always()
-        env:
-          SMOKE_URL: ${{ steps.maestro_smoke.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
-          AUTH_URL: ${{ steps.maestro_authenticated.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
-          SMOKE_STATUS: ${{ steps.maestro_smoke.outputs.MAESTRO_CLOUD_UPLOAD_STATUS }}
-          AUTH_STATUS: ${{ steps.maestro_authenticated.outputs.MAESTRO_CLOUD_UPLOAD_STATUS }}
-        run: |
-          {
-            echo "## Maestro Cloud"
-            echo "- Smoke status: ${SMOKE_STATUS:-not run}"
-            echo "- Smoke report: ${SMOKE_URL:-not available}"
-            echo "- Authenticated status: ${AUTH_STATUS:-not run}"
-            echo "- Authenticated report: ${AUTH_URL:-not available}"
-          } >> "$GITHUB_STEP_SUMMARY"
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayar-android-emulator-qa
+          path: qa-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
