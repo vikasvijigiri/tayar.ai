@@ -21,6 +21,7 @@ import * as Crypto from "expo-crypto";
 import { C, layout } from "./src/theme/tokens";
 import { PageHeader } from "./src/components/PageHeader";
 import { SurfaceCard } from "./src/components/SurfaceCard";
+import { ActionButton } from "./src/components/ActionButton";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -873,7 +874,7 @@ export default function App() {
         <SurfaceCard>
           <Text style={s.cardTitle}>{summary?.weakest_topic ? `Review ${summary.weakest_topic.topic}` : summary && summary.total_attempts >= 10 ? "Broaden your topic coverage" : "Establish your baseline"}</Text>
           <Text style={s.body}>{summary?.weakest_topic ? `${summary.weakest_topic.topic} currently has your lowest tracked accuracy (${summary.weakest_topic.accuracy_pct}%). Review the solution steps, then revisit missed questions after a short gap.` : summary && summary.total_attempts >= 10 ? `You have logged ${summary.total_attempts} answers. Keep building accuracy and retention across the verified topic bank.` : "Complete a short timed diagnostic to establish your baseline. Practice uses source-verified questions only."}</Text>
-          <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start / restart test →</Text></TouchableOpacity>
+          <ActionButton label="Start / restart test →" onPress={startNewTest} variant="secondary" />
         </SurfaceCard>
         </>}
         {screen === "Learn" && <>
@@ -882,7 +883,7 @@ export default function App() {
             <View style={s.learnBadge}><Text style={s.learnBadgeText}>START HERE</Text></View>
             <Text style={s.learnHeroTitle}>New to government exams?</Text>
             <Text style={s.learnHeroBody}>That’s okay. Begin with a short diagnostic, understand your strengths, then follow a simple study routine. You do not need to plan everything yourself.</Text>
-            <TouchableOpacity accessibilityRole="button" onPress={startNewTest} activeOpacity={0.82} style={s.primaryButton}><Text style={s.primaryButtonText}>Find my starting level  →</Text></TouchableOpacity>
+            <ActionButton label="Find my starting level  →" onPress={startNewTest} variant="primary" />
           </View>
           <Text style={s.section}>Choose your exam goal</Text>
           <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} activeOpacity={0.84} style={s.courseCard}>
@@ -943,7 +944,7 @@ export default function App() {
             </>
           }
           {questionError!==""&&questions.length===0&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
-          <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start a new test / restart set ↻</Text></TouchableOpacity>
+          <ActionButton label="Start a new test / restart set ↻" onPress={startNewTest} variant="secondary" />
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>View analytics →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Revision plan →</Text></TouchableOpacity></View>
         </SurfaceCard>
         </>}
@@ -959,17 +960,17 @@ export default function App() {
               <Text style={s.body}>{attempt.question_text}</Text>
               <Text style={s.small}>Your answer: {attempt.answer_given || "—"} · Source: {attempt.source_document || "verified source"}{attempt.source_page ? " · page " + attempt.source_page : ""}</Text>
             </View>) : <Text style={s.body}>Your answer history will appear here after the first saved response. If it stays empty, check service readiness and sign-in status.</Text>}
-            <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Practice again →</Text></TouchableOpacity>
+            <ActionButton label="Practice again →" onPress={() => setScreen("Practice")} variant="secondary" />
           </SurfaceCard>
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.crossLink}><Text style={s.crossLinkText}>Practice another set →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Review weak topics →</Text></TouchableOpacity></View>
         </>}
         {screen === "Revision" && <>
           <PageHeader eyebrow="REVISION WORKSPACE" title="Make weak areas stronger." description="Use recorded performance to choose what to revisit." compact={compactWidth} />
-          <SurfaceCard><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.primaryButton}><Text style={s.primaryButtonText}>Start revision practice</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>See topic analytics →</Text></TouchableOpacity></SurfaceCard>
-          <SurfaceCard><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></SurfaceCard><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Go to practice workspace →</Text></TouchableOpacity>
+          <SurfaceCard><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><ActionButton label="Start revision practice" onPress={startNewTest} variant="primary" /><ActionButton label="See topic analytics →" onPress={() => setScreen("Progress")} variant="secondary" /></SurfaceCard>
+          <SurfaceCard><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></SurfaceCard><ActionButton label="Go to practice workspace →" onPress={() => setScreen("Practice")} variant="secondary" />
         </>}
         {screen === "Services" && <>
-          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><TouchableOpacity accessibilityRole="button" onPress={signOut} activeOpacity={0.82} style={s.signOutButton}><Text style={s.signOutText}>Sign out securely</Text></TouchableOpacity></SurfaceCard>
+          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><ActionButton label="Sign out securely" onPress={signOut} variant="danger" /></SurfaceCard>
           <PageHeader eyebrow="SERVICE CENTRE" title="Learning services." description="Check endpoints when something feels stuck." compact={compactWidth} />
           <SurfaceCard><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></SurfaceCard>
           {[
