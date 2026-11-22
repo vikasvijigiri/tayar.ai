@@ -8,6 +8,7 @@ requires a human-entered Supabase OTP and is not suitable for scheduled CI.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -23,11 +24,13 @@ class CheckFailure(RuntimeError):
     pass
 
 
-def request(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[int, Any, str]:
+def request(method: str, path: str, payload: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None) -> tuple[int, Any, str]:
     body = json.dumps(payload).encode() if payload is not None else None
     headers = {"User-Agent": "TayarAI-Synthetic-Monitor/1.0", "Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
+    if extra_headers:
+        headers.update(extra_headers)
     last_error: Exception | None = None
     for attempt in range(RETRIES):
         req = urllib.request.Request(BASE + path, data=body, headers=headers, method=method)
@@ -61,8 +64,8 @@ def expect(ok: bool, message: str) -> None:
         raise CheckFailure(message)
 
 
-def check(method: str, path: str, expected: int, payload: dict[str, Any] | None = None) -> tuple[Any, str]:
-    status, data, content_type = request(method, path, payload)
+def check(method: str, path: str, expected: int, payload: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None) -> tuple[Any, str]:
+    status, data, content_type = request(method, path, payload, extra_headers)
     expect(status == expected, f"{method} {path}: expected HTTP {expected}, got {status}")
     print(f"PASS {method} {path} -> {status}")
     return data, content_type
@@ -104,7 +107,9 @@ def main() -> int:
         expect("answer_key" not in row and "solution_steps" not in row, "Public question endpoint leaked answer material")
     print(f"PASS question integrity and answer-key non-disclosure ({len(rows)} rows; bank total {questions['total_count']})")
 
-    metrics, metrics_type = check("GET", "/metrics", 200)
+    metrics_token = os.getenv("METRICS_BEARER_TOKEN", "").strip()
+    metrics_headers = {"Authorization": f"Bearer {metrics_token}"} if metrics_token else None
+    metrics, metrics_type = check("GET", "/metrics", 200, extra_headers=metrics_headers)
     expect("text/plain" in metrics_type, "/metrics did not return Prometheus text exposition")
     expect(isinstance(metrics, str) and ("# HELP" in metrics or "# TYPE" in metrics),
            "/metrics did not return Prometheus metrics")
