@@ -1,0 +1,112 @@
+name: Physical Android QA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: physical-android-qa
+  cancel-in-progress: false
+
+jobs:
+  physical-device:
+    name: Run QA on attached Android handset
+    runs-on: [self-hosted, linux, android-device]
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify Android device and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v adb
+          command -v maestro
+          java -version
+          adb devices -l
+          if ! adb devices | awk 'NR > 1 && $2 == "device" { found=1 } END { exit !found }'; then
+            echo "No authorized Android handset found. Connect and authorize the QA device."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Android native project
+        working-directory: mobile
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Build handset debug APK
+        working-directory: mobile
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain assembleDebug
+
+      - name: Install Tayar.ai on attached handset
+        run: |
+          set -euo pipefail
+          adb install -r mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p qa-artifacts
+
+      - name: Run launch and validation flows
+        shell: bash
+        run: |
+          set -o pipefail
+          maestro test .maestro/smoke.yaml 2>&1 | tee qa-artifacts/smoke.log
+          maestro test .maestro/auth-validation.yaml 2>&1 | tee qa-artifacts/auth-validation.log
+
+      - name: Run authenticated navigation (when test credentials exist)
+        if: ${{ secrets.TEST_PHONE != '' && secrets.TEST_OTP != '' }}
+        env:
+          TEST_PHONE: ${{ secrets.TEST_PHONE }}
+          TEST_OTP: ${{ secrets.TEST_OTP }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          maestro test -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml 2>&1 | tee qa-artifacts/authenticated-navigation.log
+
+      - name: Explain skipped authenticated test
+        if: ${{ secrets.TEST_PHONE == '' || secrets.TEST_OTP == '' }}
+        run: |
+          echo "Authenticated journey skipped: configure TEST_PHONE and TEST_OTP as repository Actions secrets for a dedicated Supabase test project." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Capture filtered Android crash diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p qa-artifacts
+          adb logcat -d -v time 2>/dev/null | grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|tayar" > qa-artifacts/android-crash-diagnostics.log || true
+          adb exec-out screencap -p > qa-artifacts/final-screen.png 2>/dev/null || true
+          {
+            echo "## Physical Android QA"
+            adb devices -l
+            echo ""
+            echo "Filtered crash diagnostics and final screenshot are attached as workflow artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload physical-device evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayar-physical-android-qa
+          path: qa-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
