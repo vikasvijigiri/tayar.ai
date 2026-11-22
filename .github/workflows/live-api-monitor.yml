@@ -30,4 +30,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check deployed API endpoints
+        env:
+          METRICS_BEARER_TOKEN: ${{ secrets.METRICS_BEARER_TOKEN }}
         run: python ops/live_api_smoke.py
