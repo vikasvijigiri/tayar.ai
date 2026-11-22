@@ -4,7 +4,7 @@
 
 - **Maestro MCP**: AI-assisted exploration, screen hierarchy inspection, screenshots, authoring and running repeatable UI flows.
 - **Manos MCP**: exploratory device control, device conditions, crash/ANR logs, network capture and accessibility audits.
-- **Maestro Cloud**: hosted Android UI regression in GitHub Actions.
+- **GitHub-hosted Android emulator**: repeatable cloud CI execution through reactivecircus/android-emulator-runner. Maestro Cloud remains an optional paid device-matrix expansion.
 - **Physical Android device**: run the same Maestro flows on an ADB-connected device using a persistent self-hosted runner or a compatible device farm.
 - **Backend**: retain pytest/HTTPX coverage for API contracts, auth, idempotency, grading and persistence. UI tests do not replace backend integration tests.
 
@@ -47,16 +47,16 @@ args = ["-y", "manos-mcp", "serve"]
 
 Restart the coding agent after changing MCP configuration. A cloud workspace must have an ADB-accessible emulator/device for local device-control tools. A remote phone must be exposed through a secure ADB connection or a persistent self-hosted runner; do not expose ADB's TCP port publicly.
 
-## Maestro Cloud setup
+## GitHub Actions emulator setup
 
-1. Create a Maestro account/project and obtain its API key and project ID.
-2. In GitHub repository Settings → Secrets and variables → Actions, add:
-   - `MAESTRO_CLOUD_API_KEY`
-   - `MAESTRO_PROJECT_ID`
-3. The `Mobile E2E` workflow builds a debug APK and uploads it with the flows in `.maestro/`.
-4. Review the Maestro Console run from the workflow summary.
+The Mobile E2E workflow uses the GitHub-hosted Linux runner and reactivecircus/android-emulator-runner to boot a Pixel 7 Pro / Android 15 emulator. It builds an x86_64 debug APK, installs Maestro CLI, executes the smoke and phone-validation flows, optionally runs authenticated navigation, and uploads JUnit/log/screenshot evidence.
 
-Maestro Cloud requires an eligible Cloud plan. Do not put API keys, OTPs, user passwords or Supabase service-role keys in flow YAML or source control.
+No Maestro Cloud account is required for the default emulator CI. Add these repository Actions secrets only if you want the authenticated journey:
+
+- TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
+- TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
+
+The smoke and local-validation tests run without secrets. Never use production accounts or personal OTPs. Maestro Cloud can be added later if you want a wider hosted device matrix; its GitHub Actions integration requires a Maestro Cloud plan.
 
 ## Running flows locally
 
@@ -93,7 +93,7 @@ Questions shown in tests must come from the reviewed source-verified question ba
 
 ## Current limitations
 
-The checked-in flows cover unauthenticated launch, local phone validation and (when test OTP secrets are configured) authenticated navigation across Today, Learn, Practice, Progress and Services, followed by sign-out. They are not a complete acceptance suite. Live SMS delivery, Google OAuth, AI-provider failure modes, persistent test-user lifecycle and backend idempotency require dedicated test fixtures and backend integration tests. Maestro Cloud requires an external account/project and repository secrets. Physical-device execution requires a private self-hosted runner with an authorized Android handset; the workflow is manual-only and does not provision hardware.
+The checked-in flows cover unauthenticated launch, local phone validation and (when test OTP secrets are configured) authenticated navigation across Today, Learn, Practice, Progress and Services, followed by sign-out. They are not a complete acceptance suite. Live SMS delivery, Google OAuth, AI-provider failure modes, persistent test-user lifecycle and backend idempotency require dedicated test fixtures and backend integration tests. The GitHub-hosted emulator workflow does not require an external device-farm account. Physical-device execution requires a private self-hosted runner with an authorized Android handset; the workflow is manual-only and does not provision hardware. Maestro Cloud is an optional paid expansion for additional device/OS combinations.
 
 
 ## Checked-in flow inventory
@@ -110,7 +110,7 @@ The checked-in flows cover unauthenticated launch, local phone validation and (w
 - TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
 - TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
 
-The Mobile E2E workflow runs smoke-tagged flows on a Pixel 7 / Android 14 Maestro Cloud device when the first two secrets exist. The authenticated flow is separately run only when TEST_PHONE and TEST_OTP are configured. If these secrets are absent, the workflow records the skipped suite in the GitHub Actions summary. Never use production accounts or personal OTPs.
+The Mobile E2E workflow runs smoke and phone-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. The authenticated flow is run only when TEST_PHONE and TEST_OTP are configured; otherwise the workflow records the skipped suite in the GitHub Actions summary. Never use production accounts or personal OTPs.
 
 ## Expanded acceptance scenarios
 
