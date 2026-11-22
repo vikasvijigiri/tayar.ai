@@ -1,0 +1,4 @@
+appId: ai.tayar.adaptive
+flows:
+  - smoke.yaml
+  - practice-navigation.yaml
