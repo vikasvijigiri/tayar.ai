@@ -16,6 +16,9 @@ on:
       - "mobile/**"
       - ".maestro/**"
       - ".github/workflows/mobile-e2e.yml"
+      - ".devcontainer/**"
+      - "mobile/QA.md"
+      - "README.md"
   workflow_dispatch:
 
 permissions:
