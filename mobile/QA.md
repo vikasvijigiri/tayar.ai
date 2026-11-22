@@ -105,12 +105,10 @@ The checked-in flows cover unauthenticated launch, local phone validation and (w
 
 ## Required GitHub Actions secrets
 
-- MAESTRO_CLOUD_API_KEY — Maestro Cloud API key.
-- MAESTRO_PROJECT_ID — Maestro Cloud project ID.
 - TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
 - TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
 
-The Mobile E2E workflow runs smoke and phone-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. The authenticated flow is run only when TEST_PHONE and TEST_OTP are configured; otherwise the workflow records the skipped suite in the GitHub Actions summary. Never use production accounts or personal OTPs.
+The Mobile E2E workflow runs smoke and phone-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. The authenticated flow is run only when TEST_PHONE and TEST_OTP are configured; otherwise it is skipped with a note in the JUnit/step evidence. Never use production accounts or personal OTPs.
 
 ## Expanded acceptance scenarios
 
