@@ -114,6 +114,14 @@ def main() -> int:
     expect(isinstance(metrics, str) and ("# HELP" in metrics or "# TYPE" in metrics),
            "/metrics did not return Prometheus metrics")
 
+    # Developer-only attempt preview must remain disabled in production.
+    check("POST", "/v1/attempts/preview", 404, {
+        "question_id": "00000000-0000-0000-0000-000000000001",
+        "topic_id": "monitoring",
+        "is_correct": True,
+        "elapsed_ms": 1000,
+    })
+
     # These requests deliberately omit credentials and must be rejected before data access.
     check("GET", "/v1/attempts/history?exam_id=rrb_ntpc&limit=1", 401)
     check("GET", "/v1/attempts/summary?exam_id=rrb_ntpc", 401)
