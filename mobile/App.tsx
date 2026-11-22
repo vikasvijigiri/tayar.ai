@@ -48,82 +48,20 @@ function createIdempotencyKey(): string {
 type ApiStatus = "checking" | "online" | "offline";
 type AppScreen = "Today" | "Learn" | "Practice" | "Progress" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
-type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
-type Question = { id: string; exam_id: "rrb_ntpc"; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
-type QuestionPage = { exam_id: "rrb_ntpc"; questions: Question[]; total_count: number; strategy: "baseline" | "mixed_baseline" | "weak_topic_focus"; focus_topic: { slug: string; topic: string; attempts: number; accuracy_pct: number } | null };
-type AnswerFeedback = { saved: true; is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
-type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
-type AttemptSummary = { exam_id: "rrb_ntpc"; total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
-type AttemptHistoryItem = { question_id: string; question_text: string; topic: string; is_correct: boolean; answer_given: string | null; elapsed_ms: number | null; created_at: string | null; source_document: string | null; source_page: string | null };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isQuestion(value: unknown): value is Question {
-  if (!isRecord(value)) return false;
-  const options = value.options;
-  return value.exam_id === "rrb_ntpc" && typeof value.id === "string" && value.id.length > 0
-    && typeof value.question_text === "string" && value.question_text.trim().length > 0
-    && Array.isArray(options) && options.length === 4
-    && options.every((option) => typeof option === "string" && option.trim().length > 0
-      || isRecord(option) && [option.label, option.text, option.value, option.key].some((part) => typeof part === "string" && part.trim().length > 0))
-    && typeof value.source_document === "string" && value.source_document.trim().length > 0
-    && typeof value.source_page === "string" && value.source_page.trim().length > 0
-    && !("answer_key" in value);
-}
-
-function isQuestionPage(value: unknown): value is QuestionPage {
-  if (!isRecord(value) || value.exam_id !== "rrb_ntpc" || !Array.isArray(value.questions)
-    || value.questions.length === 0 || !value.questions.every(isQuestion)
-    || !Number.isInteger(value.total_count) || Number(value.total_count) < value.questions.length
-    || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(value.strategy))) return false;
-  return value.focus_topic === null || isRecord(value.focus_topic)
-    && typeof value.focus_topic.slug === "string" && typeof value.focus_topic.topic === "string"
-    && Number.isInteger(value.focus_topic.attempts) && Number(value.focus_topic.attempts) >= 0
-    && typeof value.focus_topic.accuracy_pct === "number"
-    && value.focus_topic.accuracy_pct >= 0 && value.focus_topic.accuracy_pct <= 100;
-}
-
-function isTopicPerformance(value: unknown): value is TopicPerformance {
-  return isRecord(value) && typeof value.slug === "string" && typeof value.topic === "string"
-    && Number.isInteger(value.attempts) && Number(value.attempts) >= 0
-    && typeof value.accuracy_pct === "number" && value.accuracy_pct >= 0 && value.accuracy_pct <= 100
-    && typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0;
-}
-
-function isAttemptSummary(value: unknown): value is AttemptSummary {
-  if (!isRecord(value)) return false;
-  const validPercent = (part: unknown) => part === null || typeof part === "number" && part >= 0 && part <= 100;
-  return value.exam_id === "rrb_ntpc" && Number.isInteger(value.total_attempts) && Number(value.total_attempts) >= 0
-    && validPercent(value.overall_accuracy_pct) && validPercent(value.last_5_accuracy_pct)
-    && validPercent(value.repeat_accuracy_pct)
-    && (value.average_time_seconds === null || typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0)
-    && Number.isInteger(value.recent_attempts) && Number(value.recent_attempts) >= 0
-    && (value.weakest_topic === null || isTopicPerformance(value.weakest_topic))
-    && Array.isArray(value.topic_performance) && value.topic_performance.every(isTopicPerformance);
-}
-
-function isAttemptHistory(value: unknown): value is { attempts: AttemptHistoryItem[] } {
-  return isRecord(value) && value.exam_id === "rrb_ntpc" && Array.isArray(value.attempts)
-    && Number.isInteger(value.limit) && Number.isInteger(value.offset)
-    && value.attempts.every((item) => isRecord(item)
-      && typeof item.question_id === "string" && typeof item.question_text === "string"
-      && typeof item.topic === "string" && typeof item.is_correct === "boolean"
-      && (item.answer_given === null || typeof item.answer_given === "string")
-      && (item.elapsed_ms === null || typeof item.elapsed_ms === "number" && item.elapsed_ms >= 0)
-      && (item.created_at === null || typeof item.created_at === "string")
-      && (item.source_document === null || typeof item.source_document === "string")
-      && (item.source_page === null || typeof item.source_page === "string")
-      && !("answer_key" in item));
-}
-
-function isAnswerFeedback(value: unknown): value is AnswerFeedback {
-  return isRecord(value) && value.saved === true && typeof value.is_correct === "boolean"
-    && typeof value.answer_key === "string" && value.answer_key.length > 0
-    && Array.isArray(value.solution_steps) && value.solution_steps.every((step) => typeof step === "string")
-    && typeof value.source_document === "string" && value.source_document.length > 0;
-}
+import {
+  isAnswerFeedback,
+  isAttemptHistory,
+  isAttemptSummary,
+  isQuestion,
+  isQuestionPage,
+  isRecord,
+  type AnswerFeedback,
+  type AttemptHistoryItem,
+  type AttemptSummary,
+  type Question,
+  type QuestionPage,
+  type TopicPerformance,
+} from "./src/domain/contracts";
 
 export default function App() {
   const { width: viewportWidth, fontScale } = useWindowDimensions();
