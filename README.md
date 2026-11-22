@@ -67,6 +67,24 @@ Render uses `render.yaml`. Configure the environment variables in the Render das
 
 Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql`, then `backend/supabase/seed_verified_math.sql`, and finally `backend/supabase/seed_assertions.sql` in Supabase SQL Editor to publish and validate 50 source-verified questions across twelve topics. The incremental `seed_verified_math_expansion.sql` adds the first 24-question expansion to an existing 14-question installation; `seed_verified_math_expansion_12.sql` adds twelve more questions and seven topics to an existing 38-question installation. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
+## Cloud development (GitHub Codespaces)
+
+Tayar.ai includes a browser-based development container. No local Node.js, Python, Java, Android Studio or SDK installation is required.
+
+1. Open [Create Tayar.ai Codespace](https://codespaces.new/vikasvijigiri/tayar.ai?ref=qa/mobile-maestro-cloud).
+2. Choose the **2-core** machine to stay within the personal GitHub Free allowance.
+3. Wait for the post-create setup to install the locked mobile dependencies and backend development requirements.
+4. Start the API from the repository root:
+   `cd backend && ../backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`.
+5. In a second terminal, start Expo:
+   `cd mobile && npx expo start --host tunnel`.
+
+Codespaces forwards API port 8000 and Expo Metro port 8081. Add development credentials only through GitHub Codespaces Secrets or the Codespaces environment; never put real credentials in repository files. Use a dedicated non-production Supabase project and test accounts.
+
+**Important device-testing boundary:** Android emulators and USB-connected phones are not supported inside Codespaces. The committed GitHub Actions workflow runs Maestro against a hosted Android emulator. The physical-device workflow requires a separate self-hosted runner and is optional. Maestro MCP requires a reachable device; it is not configured as a misleading no-device MCP inside Codespaces. ChatGPT can continue making repository changes through the connected GitHub integration.
+
+For a strict no-spend setup, keep Codespaces spending disabled or set the Codespaces budget to **$0**. GitHub Free personal accounts currently include 120 core-hours and 15 GB-month storage; a 2-core Codespace consumes two core-hours per active hour. Stop the Codespace when finished. See [GitHub Codespaces included usage](https://docs.github.com/en/codespaces/troubleshooting/troubleshooting-included-usage).
+
 ## Mobile QA
 
 The mobile QA architecture is documented in [mobile/QA.md](mobile/QA.md). Maestro YAML flows live in [.maestro/](.maestro/). The Mobile E2E workflow builds a debug APK and runs Maestro smoke and input-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. A separate manual-only workflow runs the same smoke flows on a physical Android handset attached to a private self-hosted runner labelled self-hosted, linux and android-device. Authenticated navigation additionally requires TEST_PHONE and TEST_OTP secrets backed by a dedicated non-production Supabase test project.
