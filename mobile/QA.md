@@ -1,142 +1,160 @@
-# Tayar.ai mobile QA
+# Tayar.ai mobile and cloud QA
 
-## Layers
+## Recommended architecture
 
-- **Maestro MCP**: AI-assisted exploration, screen hierarchy inspection, screenshots, authoring and running repeatable UI flows.
-- **Manos MCP**: exploratory device control, device conditions, crash/ANR logs, network capture and accessibility audits.
-- **GitHub-hosted Android emulator**: repeatable cloud CI execution through reactivecircus/android-emulator-runner. Maestro Cloud remains an optional paid device-matrix expansion.
-- **Physical Android device**: run the same Maestro flows on an ADB-connected device using a persistent self-hosted runner or a compatible device farm.
-- **Backend**: retain pytest/HTTPX coverage for API contracts, auth, idempotency, grading and persistence. UI tests do not replace backend integration tests.
+| Layer | Tool | Responsibility |
+|---|---|---|
+| Cloud development | GitHub Codespaces | Browser-based editor, Node 22, Python 3.12, Java 17, API development and mobile source work |
+| Repository automation | GitHub Actions | Builds APKs, runs backend/mobile checks and starts a hosted Android emulator |
+| UI automation | Maestro CLI and YAML | Deterministic smoke, validation and authenticated navigation tests |
+| Assistant-to-repository work | Connected GitHub integration | ChatGPT can inspect, edit and commit repository files without access to a personal laptop |
+| Optional diagnostics | Manos MCP | Add later only if we need interactive device logs, network capture or accessibility exploration |
 
-## MCP installation (Linux cloud workspace)
+**Important:** Android emulators and USB-connected phones are not supported inside GitHub Codespaces. Do not try to install a nested emulator there. The default, free-first device test path is the GitHub-hosted Android emulator in `.github/workflows/mobile-e2e.yml`. Maestro MCP is useful when an MCP client has a live ADB-accessible device; it is not configured as a no-device MCP in Codespaces. Maestro Cloud is optional and may require a paid plan.
 
-Prerequisites: Java 17+, Node.js 20+, Android SDK (platform-tools, platform and build-tools), ANDROID_HOME/ANDROID_SDK_ROOT, and an MCP-capable coding agent.
+## Start the cloud development environment
+
+1. Open [Tayar.ai Codespaces on the QA branch](https://codespaces.new/vikasvijigiri/tayar.ai?ref=qa/mobile-maestro-cloud).
+2. Select the 2-core machine.
+3. Wait for `.devcontainer/post-create.sh` to install the backend development requirements and locked mobile dependencies.
+4. Start the API from the repository root:
+
+   ```bash
+   cd backend
+   ../backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+5. In a second terminal, run mobile source checks:
+
+   ```bash
+   cd mobile
+   npm run typecheck
+   npm test
+   npx expo install --check
+   ```
+
+Codespaces forwards port 8000 for FastAPI and 8081 for Expo Metro. Codespaces is the cloud editing/build-preparation environment; Android UI tests run in GitHub Actions.
+
+For a strict no-spend setup, keep Codespaces spending disabled or set the Codespaces budget to $0. GitHub Free personal accounts currently include 120 core-hours and 15 GB-month storage; a 2-core Codespace uses two core-hours per active hour. Stop the Codespace when finished. See [GitHub's included usage documentation](https://docs.github.com/en/codespaces/troubleshooting/troubleshooting-included-usage).
+
+## Maestro installation and MCP
+
+Maestro CLI includes its MCP server. Install it only in an environment that has Java 17+ and a reachable Android emulator/device:
 
 ```bash
 curl -fsSL "https://get.maestro.mobile.dev" | bash
 export PATH="$HOME/.maestro/bin:$PATH"
-npm install -g manos-mcp
 maestro --version
-adb version
-manos doctor
-adb devices -l
+maestro mcp
 ```
 
-Register in the MCP client (JSON format):
+Register the MCP server in a compatible coding agent using:
 
 ```json
 {
   "mcpServers": {
-    "maestro": { "command": "maestro", "args": ["mcp"] },
-    "manos": { "command": "npx", "args": ["-y", "manos-mcp", "serve"] }
+    "maestro": {
+      "command": "maestro",
+      "args": ["mcp"]
+    }
   }
 }
 ```
 
-Codex CLI users can instead add this to `~/.codex/config.toml`:
+For Codex CLI, the equivalent `~/.codex/config.toml` entry is:
 
 ```toml
 [mcp_servers.maestro]
 command = "maestro"
 args = ["mcp"]
-
-[mcp_servers.manos]
-command = "npx"
-args = ["-y", "manos-mcp", "serve"]
 ```
 
-Restart the coding agent after changing MCP configuration. A cloud workspace must have an ADB-accessible emulator/device for local device-control tools. A remote phone must be exposed through a secure ADB connection or a persistent self-hosted runner; do not expose ADB's TCP port publicly.
+Restart the coding agent after changing MCP configuration. The MCP needs a live device visible to ADB. Codespaces does not provide that device, so use the hosted-emulator GitHub Actions workflow for this project. Do not expose ADB over a public network.
 
-## GitHub Actions emulator setup
+Manos MCP is intentionally optional. If later needed in a Linux environment with an attached test device, install it with `npm install -g manos-mcp`, then run `manos doctor` and `manos devices`. It adds exploratory diagnostics, logs, network capture and accessibility inspection; it is not required for the current automated suite.
 
-The Mobile E2E workflow uses the GitHub-hosted Linux runner and reactivecircus/android-emulator-runner to boot a Pixel 7 Pro / Android 15 emulator. It builds an x86_64 debug APK, installs Maestro CLI, executes the smoke and phone-validation flows, optionally runs authenticated navigation, and uploads JUnit/log/screenshot evidence.
+## GitHub Actions: hosted Android emulator
 
-No Maestro Cloud account is required for the default emulator CI. Add these repository Actions secrets only if you want the authenticated journey:
+The Mobile E2E workflow:
 
-- TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
-- TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
+- Builds an x86_64 debug APK from the Expo app.
+- Starts a Pixel 7 Pro / Android 15 emulator using `reactivecircus/android-emulator-runner`.
+- Installs Maestro CLI.
+- Runs the smoke and malformed-phone validation flows.
+- Runs authenticated navigation only when both test secrets are configured.
+- Uploads JUnit results, filtered Android logs and a final screenshot.
 
-The smoke and local-validation tests run without secrets. Never use production accounts or personal OTPs. Maestro Cloud can be added later if you want a wider hosted device matrix; its GitHub Actions integration requires a Maestro Cloud plan.
+Default smoke and validation tests do not need paid Maestro Cloud or any credentials. The emulator is ephemeral and runs only during the GitHub Actions job.
 
-## Running flows locally
+### Optional authenticated journey
 
-```bash
-maestro test .maestro/smoke.yaml
-maestro test .maestro/auth-validation.yaml
-# Only with a dedicated Supabase test project and fixed test OTP:
-maestro test -e TEST_PHONE=+910000000000 -e TEST_OTP=123456 .maestro/authenticated-navigation.yaml
-```
+Use a separate, non-production Supabase project and dedicated test user. Add these GitHub Actions repository secrets:
 
-## Physical-device execution
+- `TEST_PHONE`: dedicated test phone in E.164 format.
+- `TEST_OTP`: fixed test OTP supported by that test project.
 
-Connect a dedicated Android phone to a persistent self-hosted GitHub Actions runner with Android platform-tools and Maestro installed. Register the runner with labels self-hosted, linux and android-device. Confirm adb devices -l lists the handset in state device. The manual-only workflow at .github/workflows/physical-android.yml builds and installs the debug APK, runs the smoke and input-validation flows, optionally runs the authenticated journey, and uploads filtered crash diagnostics plus a screenshot.
+Never use personal OTPs or production learner accounts. Do not place secrets in the repository, Codespaces files, screenshots, logs or mobile bundle. The default smoke suite continues to run if these optional secrets are absent.
 
-Keep the runner private and restrict which repositories/workflows can execute on it. Do not expose ADB over an unrestricted public network. A cloud-hosted device farm is an alternative; confirm it supports Maestro execution before purchasing.
+## Physical Android device (optional)
 
-## Test coverage plan
-
-- App launch, cold start, relaunch and navigation across Today, Learn, Practice, Progress and Services.
-- Practice: verified question delivery, four options, answer selection, submission, grading feedback, next question and timer restart.
-- Persistence: answer history, progress summary and session restore after force-stop/relaunch.
-- Idempotency: retry the same answer after a simulated timeout; verify exactly one saved attempt.
-- Auth: valid/invalid/expired OTP, rate limiting, token refresh, logout and revoked session. Use a dedicated test Supabase project and a test OTP provider/fixture; never use a personal account.
-- Hints: cache hit, provider timeout, provider 429/500 and graceful UI recovery.
-- Network: offline launch, slow connection, connection loss during answer submission and reconnect.
-- Layout: compact device, large font scale, keyboard open, long content and orientation changes where supported.
-- Accessibility: labels/roles, touch target size, contrast and TalkBack navigation.
-- Security: no answer key in question-list responses, no service-role/AI secrets in the APK, logs or network-visible client configuration.
-- Reliability: crash/ANR review, repeated navigation, background/foreground and app termination during an active practice set.
-
-## Source integrity
-
-Questions shown in tests must come from the reviewed source-verified question bank. Do not put invented exam questions in fixtures or use UI tests to silently rewrite question text, options, answer keys or source metadata. Validate the API contract separately: question-list responses must not contain `answer_key`, and source document/page metadata must remain available.
-
-## Current limitations
-
-The checked-in flows cover unauthenticated launch, local phone validation and (when test OTP secrets are configured) authenticated navigation across Today, Learn, Practice, Progress and Services, followed by sign-out. They are not a complete acceptance suite. Live SMS delivery, Google OAuth, AI-provider failure modes, persistent test-user lifecycle and backend idempotency require dedicated test fixtures and backend integration tests. The GitHub-hosted emulator workflow does not require an external device-farm account. Physical-device execution requires a private self-hosted runner with an authorized Android handset; the workflow is manual-only and does not provision hardware. Maestro Cloud is an optional paid expansion for additional device/OS combinations.
-
+A physical device is not required for the cloud-first workflow. If later needed, register a private self-hosted GitHub Actions runner with labels `self-hosted`, `linux`, `android-device`, connect a dedicated test handset and authorize it with ADB. The manual-only workflow at `.github/workflows/physical-android.yml` builds, installs and runs the smoke/validation flows. Keep the runner private and restrict its repository access. Never expose ADB to the public internet.
 
 ## Checked-in flow inventory
 
-- .maestro/smoke.yaml — tag smoke; launches the unauthenticated app and checks the Continue and Continue with Google controls.
-- .maestro/auth-validation.yaml — tag smoke; submits a malformed phone number and verifies local validation.
-- .maestro/authenticated-navigation.yaml — tag authenticated; signs in with a configured test phone and fixed test OTP, navigates Today/Learn/Practice/Progress/Services, then signs out.
-- .maestro/config.yaml — selects the three flows, stops the suite on failure, stores Maestro artifacts and disables Android system animations on Maestro Cloud.
+- `.maestro/smoke.yaml`: launches the app and checks the unauthenticated entry controls.
+- `.maestro/auth-validation.yaml`: enters a malformed phone number and checks local validation.
+- `.maestro/authenticated-navigation.yaml`: signs in with the dedicated test account, visits Today/Learn/Practice/Progress/Services and signs out.
+- `.maestro/config.yaml`: selects flows, controls execution order and artifact output.
 
-## Required GitHub Actions secrets
+## Full test scenario matrix
 
-- TEST_PHONE — dedicated non-production Supabase test user phone number in E.164 format.
-- TEST_OTP — fixed test OTP configured in that dedicated Supabase project.
+### Authentication and session
+- Valid, malformed, invalid and expired phone/OTP combinations.
+- Resend cooldown, provider rate limiting and retry.
+- Session persistence after relaunch.
+- Token refresh, revoked refresh token and secure sign-out.
+- Google OAuth success, cancellation and failure.
 
-The Mobile E2E workflow runs smoke and phone-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. The authenticated flow is run only when TEST_PHONE and TEST_OTP are configured; otherwise it is skipped with a note in the JUnit/step evidence. Never use production accounts or personal OTPs.
+### Navigation and UI
+- Cold launch, warm launch and app relaunch.
+- Today, Learn, Practice, Progress and Services navigation.
+- Keyboard visibility, small screens, large font scale, long content and scroll boundaries.
+- Accessibility labels, touch target size, contrast and TalkBack focus order.
 
-## Expanded acceptance scenarios
+### Practice and source integrity
+- Only source-verified questions appear in learner practice.
+- Preserve exact question wording, numbers, units and original options.
+- Verify question-list API responses never contain `answer_key`.
+- Preserve source PDF/page/shift metadata.
+- Test empty bank, malformed payload, pagination and timeouts.
+- Option selection, submit, correct/incorrect feedback, next question and timer expiry/reset.
+- Retry the same answer after a simulated timeout and verify idempotency (one saved attempt).
 
-Authentication: malformed/valid phone, invalid/expired OTP, resend cooldown, provider rate limit, token refresh, revoked refresh token, session restoration after relaunch, Google OAuth success/cancel/failure and secure sign-out.
+### Analytics and persistence
+- Zero-attempt state and populated progress summary.
+- Topic accuracy, speed and recent history.
+- Persistence after relaunch and user-data isolation under RLS.
 
-Practice: source-verified question delivery, exactly four options, no answer_key in question-list payload, source document/page preservation, empty bank, malformed payload, timeout, option selection, answer submission, correct/incorrect feedback, retry with same idempotency key, duplicate-submit protection, timer expiry/reset and pagination.
+### Hints and network resilience
+- Successful hint, cache hit, provider timeout, 429 and 500.
+- Offline launch, reconnect, slow network and connection loss during submission.
+- API 401/403/404/429/500 handling and retry behaviour.
 
-Analytics: zero-attempt state, populated summary, topic accuracy, recent history, user isolation and persisted state after relaunch.
+### Reliability and security
+- Background/foreground, force-stop during practice and repeated navigation.
+- Crash/ANR inspection.
+- No passwords, OTPs, tokens, answer keys, service-role keys or AI-provider keys in logs or APK.
+- Authenticated writes and RLS isolation.
 
-Hints: successful response, cache hit, timeout, provider 429/500 and malformed response.
+## Source-integrity rule
 
-Network: offline launch, reconnect, slow network, connection loss during submission, API 401/403/404/429/500 and request timeout.
+Questions used in fixtures and UI tests must be verified directly against the uploaded railway exam PDFs. Never fabricate or paraphrase an exam question, silently alter an option or answer key, or claim repetition without source evidence. AI hints may explain stored solution steps but must never modify the authoritative answer key.
 
-Layout/accessibility: 320–360 dp screens, font scale 1.0/1.3/1.5/2.0, keyboard overlap, long question/solution text, scrolling, TalkBack focus order, labels, contrast and touch target size.
+## Current limitations
 
-Reliability/security: background/foreground, force-stop during practice, crash/ANR inspection, repeated navigation, no tokens/OTP/passwords/answer keys in logs, no service-role or AI-provider secrets in the APK, authenticated writes and RLS isolation.
-
-Manos exploratory loop: list devices → inspect screen → screenshot → interact using semantic selectors → set offline/slow network or font scale → inspect logs and accessibility audit → record the session → export a Maestro flow and review it before committing. Use response mocking only with a dedicated debug/test backend, never production learner traffic.
-
-
-## Headless emulator in a cloud workspace
-
-If your cloud IDE provides a Linux VM with hardware virtualization or a supported software-rendered emulator, install an Android system image and start an AVD. Example for API 35:
-
-    sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
-    avdmanager create avd -n Tayar_QA_API_35 -k "system-images;android-35;google_apis;x86_64" -d pixel_7
-    emulator -avd Tayar_QA_API_35 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &
-    adb wait-for-device
-    adb devices -l
-
-Some hosted workspaces do not expose KVM/virtualization; in that case use Maestro Cloud for emulator execution instead of trying to launch a nested emulator. Manos and Maestro MCP can control the emulator only after it appears in adb devices.
+- Checked-in UI flows are a starter regression suite, not full end-to-end acceptance coverage.
+- The authenticated journey needs a dedicated test Supabase project and fixed test OTP configuration.
+- Google OAuth, live SMS delivery, provider-failure handling and RLS/user-isolation require dedicated integration fixtures.
+- Codespaces does not run Android emulators or attach USB phones. The GitHub-hosted emulator workflow covers the default cloud test path.
+- Physical-device testing requires a separate private self-hosted runner and is optional.
+- Maestro Cloud is an optional paid expansion for additional device/OS coverage.
