@@ -1005,8 +1005,20 @@ function ServiceStatus({status}:{status:ApiStatus}) {
 }
 function Metric({label,value,color}:{label:string,value:string,color:string}) {
   const scale = useRef(new Animated.Value(0.94)).current;
-  useEffect(() => { Animated.spring(scale,{toValue:1,friction:6,tension:90,useNativeDriver:true}).start(); },[value]);
-  return <Animated.View style={[s.metric,{transform:[{scale}]}]}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text></Animated.View>;
+  const counter = useRef(new Animated.Value(0)).current;
+  const [count,setCount] = useState(0);
+  const numeric = /^-?\\d+(?:\\.\\d+)?/.test(value) && value !== "—";
+  const suffix = numeric ? value.replace(/^-?\\d+(?:\\.\\d+)?/,"") : "";
+  const target = numeric ? Number(value.match(/^-?\\d+(?:\\.\\d+)?/)?.[0]) : 0;
+  useEffect(() => {
+    Animated.spring(scale,{toValue:1,friction:6,tension:90,useNativeDriver:true}).start();
+    if (!numeric) return;
+    counter.setValue(0);
+    const listener = counter.addListener(({value:current}) => setCount(current));
+    Animated.timing(counter,{toValue:target,duration:720,useNativeDriver:false}).start();
+    return () => counter.removeListener(listener);
+  },[value]);
+  return <Animated.View style={[s.metric,{transform:[{scale}]}]}><View style={{width:7,height:7,borderRadius:4,backgroundColor:color,marginBottom:10}}/><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{numeric ? Math.round(count*10)/10 + suffix : value}</Text></Animated.View>;
 }
 
 const s=StyleSheet.create({
