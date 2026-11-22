@@ -6,5 +6,5 @@ tags:
     clearState: true
 - tapOn: "Phone number with country code"
 - inputText: "12345"
-- tapOn: "Continue"
+- tapOn: "^Continue$"
 - assertVisible: ".*Enter phone with country code.*"
