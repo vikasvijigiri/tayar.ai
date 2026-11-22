@@ -1,9 +1,10 @@
 const fs = require('fs');
 const app = fs.readFileSync('App.tsx', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-const sessionGateIndex = app.indexOf('  if (sessionLoading) {');
-const authGateIndex = app.indexOf('  if (!token) {\n    return (');
-const lastHookIndex = Math.max(app.lastIndexOf('useEffect('), app.lastIndexOf('useState('), app.lastIndexOf('useRef('));
+const appComponent = app.slice(0, app.indexOf('\nfunction Metric('));
+const sessionGateIndex = appComponent.indexOf('  if (sessionLoading) {');
+const authGateIndex = appComponent.indexOf('  if (!token) {\n    return (');
+const lastHookIndex = Math.max(appComponent.lastIndexOf('useEffect('), appComponent.lastIndexOf('useState('), appComponent.lastIndexOf('useRef('));
 if (sessionGateIndex < 0 || authGateIndex < 0 || lastHookIndex > sessionGateIndex || lastHookIndex > authGateIndex) {
   throw new Error('All React hooks must be declared before any conditional render, including session restore');
 }
@@ -26,8 +27,8 @@ if (!app.includes('topic_performance')) throw new Error('Missing topic mastery d
 if (!app.includes('repeat_accuracy_pct')) throw new Error('Missing repeat accuracy data binding');
 if (!app.includes('solution_steps')) throw new Error('Missing solution display');
 if (!app.includes('/v1/ai/hint')) throw new Error('Missing authenticated AI hint integration');
-if (!app.includes('type AppScreen = "Home" | "Practice" | "Analytics" | "Revision" | "Services"')) throw new Error('Missing predictable static screen navigation');
-for (const screen of ['Home','Practice','Analytics','Revision','Services']) {
+if (!app.includes('type AppScreen = "Today" | "Learn" | "Practice" | "Progress" | "Revision" | "Services"')) throw new Error('Missing four-tab learner navigation and secondary screens');
+for (const screen of ['Today','Learn','Practice','Progress','Revision','Services']) {
   if (!app.includes('"' + screen + '"')) throw new Error('Missing navigation destination: ' + screen);
 }
 if (!app.includes('Start a new test / restart set')) throw new Error('Missing restart/new-test action');
@@ -56,3 +57,32 @@ if (!app.includes('body.includes("tayar_http_requests_total")') || !app.includes
 if (!app.includes('body?.dependencies?.supabase === "connected"') || !app.includes('body?.dependencies?.question_bank')) throw new Error("Readiness checker must validate critical dependency state");
 if (!app.includes("Clear account-scoped state before returning to the sign-in screen")) throw new Error("Sign-out must clear account-scoped state");
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
+
+if (!app.includes("const authenticatedFetch") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh and retry expired sessions");
+if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight");
+if (!app.includes("sessionEpoch.current")) throw new Error("Logout must invalidate an in-flight refresh");
+if (!app.includes("const verifyOtp = async () => {\n    sessionEpoch.current += 1;") || !app.includes("const signInWithGoogle = async () => {\n    sessionEpoch.current += 1;")) throw new Error("New sign-in must invalidate stale in-flight refreshes");
+if (!app.includes("tokenRef.current = token") || !app.includes("const currentToken = tokenRef.current")) throw new Error("Authenticated requests must use the latest access token");
+if (!app.includes("lastSent?.phone === normalizedPhone") || !app.includes("at: Date.now()")) throw new Error("OTP resend cooldown must be scoped to the destination phone");
+if (!app.includes("expiresAt: Date.now() + 5 * 60 * 1000")) throw new Error("Supabase public configuration must have a short cache lifetime");
+console.log("Auth resilience checks passed: refresh rotation, single-flight, logout race, token freshness and per-phone OTP cooldown");
+
+if (!app.includes('useState<AppScreen>("Today")')) throw new Error("App must open on Today after sign-in");
+for (const tab of ['label:"Today"','label:"Learn"','label:"Practice"','label:"Progress"']) if (!app.includes(tab)) throw new Error("Missing four-tab item: "+tab);
+if (!app.includes('screen === "Learn"') || !app.includes('screen === "Progress"')) throw new Error("Learner and progress screens must be present");
+if (!app.includes("Animated.spring(screenMotion")) throw new Error("Tab transitions must animate smoothly");
+if (!app.includes("Animated.spring(scale")) throw new Error("Progress metrics must animate");
+if (!app.includes("accessibilityLabel={item.label}")) throw new Error("Bottom tabs need accessible labels");
+if (!app.includes("SSC CGL") || !app.includes("SSC CHSL")) throw new Error("SSC course discovery cards are missing");
+if (!app.includes("NIZAMABAD · TELANGANA")) throw new Error("Nizamabad offline classroom card is missing");
+console.log("Learner experience checks passed: four tabs, icons, transitions, animated metrics, beginner onboarding, RRB/SSC discovery and Nizamabad classroom");
+if (!app.includes("useWindowDimensions")) throw new Error("Layouts must respond to actual device viewport changes");
+if (!app.includes("viewportWidth < 360") || !app.includes("viewportWidth < 430")) throw new Error("Compact and standard phone breakpoints are missing");
+if (!app.includes("fontScale")) throw new Error("Bottom navigation must account for accessibility font scaling");
+if (!app.includes("maxWidth:contentMaxWidth") || !app.includes("maxWidth:520")) throw new Error("Content columns must be constrained on wide devices");
+if (!app.includes("minWidth:48") || !app.includes("minHeight:56")) throw new Error("Bottom navigation touch targets must remain accessible");
+console.log("Responsive layout checks passed: compact phones, font scale, constrained wide layouts and touch target sizing");
+const touchableCount = (app.match(/<TouchableOpacity\\b/g) || []).length;
+const buttonRoleCount = (app.match(/<TouchableOpacity[^>]*\\baccessibilityRole="button"/g) || []).length;
+if (touchableCount !== buttonRoleCount) throw new Error("Every interactive touch surface must expose button semantics to assistive technology");
+console.log("Accessibility checks passed: every touch surface exposes button semantics");
