@@ -1,0 +1,47 @@
+{
+  "name": "Tayar.ai Cloud Development",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "hostRequirements": {
+    "cpus": 2
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "expo.vscode-expo-tools"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+        "typescript.tsdk": "mobile/node_modules/typescript/lib"
+      }
+    }
+  },
+  "forwardPorts": [8000, 8081],
+  "portsAttributes": {
+    "8000": {
+      "label": "Tayar.ai FastAPI",
+      "onAutoForward": "notify"
+    },
+    "8081": {
+      "label": "Expo Metro",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "shutdownAction": "stopContainer"
+}
