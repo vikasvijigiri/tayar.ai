@@ -31,8 +31,10 @@ jobs:
         include:
           - api: 29
             profile: pixel_2
+            resolution: 320x720
           - api: 35
             profile: pixel_6
+            resolution: 480x960
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -78,6 +80,8 @@ jobs:
           emulator-boot-timeout: 600
           script: |
             set -euo pipefail
+            adb shell wm size ${{ matrix.resolution }}
+            adb shell wm density 160
             adb install mobile/android/app/build/outputs/apk/release/app-release.apk
             adb shell settings put system font_scale 1.30
             adb shell monkey -p ai.tayar.adaptive 1
