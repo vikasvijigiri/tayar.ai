@@ -98,14 +98,25 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disable-animations: true
-          disable-spellchecker: true
+          # Keep the emulator action from issuing extra settings-service writes; the
+          # app tests do not depend on system animation or spell-check settings.
+          disable-animations: false
+          disable-spellchecker: false
           emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -accel off
+          # TCG is required on hosted runners without nested KVM. Give system_server
+          # enough memory and limit CPU contention after Gradle has completed.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -wipe-data -noaudio -no-boot-anim -camera-back none -accel off -memory 4096 -cores 2 -partition-size 2048
           script: |
             set -e
             mkdir -p qa-artifacts
             trap 'adb logcat -d -v time 2>/dev/null | grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|tayar" > qa-artifacts/android-crash-diagnostics.log || true; adb exec-out screencap -p > qa-artifacts/final-screen.png 2>/dev/null || true' EXIT
+            adb wait-for-device
+            # Wait for Android framework services, not just the emulator boot flag.
+            for attempt in $(seq 1 60); do
+              if adb shell pm path android >/dev/null 2>&1; then break; fi
+              sleep 5
+            done
+            adb shell pm path android >/dev/null
             adb install -r mobile/android/app/build/outputs/apk/debug/app-debug.apk
             maestro test --format junit --output qa-artifacts/smoke.xml .maestro/smoke.yaml
             maestro test --format junit --output qa-artifacts/auth-validation.xml .maestro/auth-validation.yaml
