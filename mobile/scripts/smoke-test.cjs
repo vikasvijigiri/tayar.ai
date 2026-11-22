@@ -76,3 +76,9 @@ if (!app.includes("accessibilityLabel={item.label}")) throw new Error("Bottom ta
 if (!app.includes("SSC CGL") || !app.includes("SSC CHSL")) throw new Error("SSC course discovery cards are missing");
 if (!app.includes("NIZAMABAD · TELANGANA")) throw new Error("Nizamabad offline classroom card is missing");
 console.log("Learner experience checks passed: four tabs, icons, transitions, animated metrics, beginner onboarding, RRB/SSC discovery and Nizamabad classroom");
+if (!app.includes("useWindowDimensions")) throw new Error("Layouts must respond to actual device viewport changes");
+if (!app.includes("viewportWidth < 360") || !app.includes("viewportWidth < 430")) throw new Error("Compact and standard phone breakpoints are missing");
+if (!app.includes("fontScale")) throw new Error("Bottom navigation must account for accessibility font scaling");
+if (!app.includes("maxWidth:contentMaxWidth") || !app.includes("maxWidth:520")) throw new Error("Content columns must be constrained on wide devices");
+if (!app.includes("minWidth:48") || !app.includes("minHeight:56")) throw new Error("Bottom navigation touch targets must remain accessible");
+console.log("Responsive layout checks passed: compact phones, font scale, constrained wide layouts and touch target sizing");
