@@ -69,13 +69,9 @@ maestro test -e TEST_PHONE=+910000000000 -e TEST_OTP=123456 .maestro/authenticat
 
 ## Physical-device execution
 
-Connect a dedicated Android phone to a persistent self-hosted GitHub Actions runner with Android platform-tools and Maestro installed. Confirm `adb devices -l` lists the device. Run:
+Connect a dedicated Android phone to a persistent self-hosted GitHub Actions runner with Android platform-tools and Maestro installed. Register the runner with labels self-hosted, linux and android-device. Confirm adb devices -l lists the handset in state device. The manual-only workflow at .github/workflows/physical-android.yml builds and installs the debug APK, runs the smoke and input-validation flows, optionally runs the authenticated journey, and uploads filtered crash diagnostics plus a screenshot.
 
-```bash
-maestro test .maestro/
-```
-
-Keep the runner private and restrict which repositories/workflows can execute on it. Do not expose ADB over an unrestricted public network. A cloud-hosted device farm is an alternative; confirm it supports the required Android models and Maestro execution before purchasing.
+Keep the runner private and restrict which repositories/workflows can execute on it. Do not expose ADB over an unrestricted public network. A cloud-hosted device farm is an alternative; confirm it supports Maestro execution before purchasing.
 
 ## Test coverage plan
 
