@@ -837,7 +837,7 @@ export default function App() {
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
-      <Animated.View style={[s.contentArea,{opacity:screenMotion,transform:[{translateY:screenMotion.interpolate({inputRange:[0.94,1],outputRange:[12,0]})]}]}]}>
+      <Animated.View style={{flex:1,opacity:screenMotion,transform:[{translateY:screenMotion.interpolate({inputRange:[0.94,1],outputRange:[12,0]})}]}}>
       <ScrollView style={s.contentScroll} contentContainerStyle={s.page}>
         <View style={s.top}>
           <View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View>
@@ -986,7 +986,7 @@ export default function App() {
           <View style={s.crossLinks}><TouchableOpacity onPress={() => setScreen("Practice")} style={s.crossLink}><Text style={s.crossLinkText}>Back to practice →</Text></TouchableOpacity><TouchableOpacity onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>Open analytics →</Text></TouchableOpacity></View>
         </>}
         <Text style={s.footer}>Small steps. Strong preparation. · Tayar.ai</Text>
-      
+      </ScrollView>
     </Animated.View>
       <View style={s.bottomBar}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={s.tabButton}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
     </SafeAreaView>
