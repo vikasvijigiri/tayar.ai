@@ -103,7 +103,7 @@ const pageHeader = fs.readFileSync('src/components/PageHeader.tsx', 'utf8');
 if (!pageHeader.includes('accessibilityRole="header"') || !pageHeader.includes('titleCompact')) throw new Error("Page headers must expose heading semantics and compact-phone typography");
 console.log("Shared UI checks passed: seven screen headers use accessible responsive typography");
 
-if ((app.match(/<SurfaceCard>/g) || []).length !== 11) throw new Error("All eleven shared content cards must use SurfaceCard");
+if ((app.match(/<SurfaceCard\b/g) || []).length !== 11 || (app.match(/<\/SurfaceCard>/g) || []).length !== 11) throw new Error("All eleven shared content cards must use SurfaceCard with balanced wrappers");
 if (!app.includes('from "./src/components/SurfaceCard"')) throw new Error("App must consume the shared SurfaceCard component");
 const surfaceCard = fs.readFileSync('src/components/SurfaceCard.tsx', 'utf8');
 if (!surfaceCard.includes('colors.surface') || !surfaceCard.includes('radii.lg') || !surfaceCard.includes('spacing.lg')) throw new Error("SurfaceCard must use shared design tokens");
