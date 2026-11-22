@@ -19,19 +19,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Verify Android device and toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v adb
-          command -v maestro
-          java -version
-          adb devices -l
-          if ! adb devices | awk 'NR > 1 && $2 == "device" { found=1 } END { exit !found }'; then
-            echo "No authorized Android handset found. Connect and authorize the QA device."
-            exit 1
-          fi
-
       - name: Detect authenticated test credentials
         id: qa_config
         env:
@@ -56,6 +43,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Verify Android device and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v adb
+          command -v maestro
+          java -version
+          adb devices -l
+          if ! adb devices | awk 'NR > 1 && $2 == "device" { found=1 } END { exit !found }'; then
+            echo "No authorized Android handset found. Connect and authorize the QA device."
+            exit 1
+          fi
 
       - name: Install mobile dependencies
         working-directory: mobile
