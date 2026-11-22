@@ -1,0 +1,33 @@
+name: Live API Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - "ops/live_api_smoke.py"
+      - ".github/workflows/live-api-monitor.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tayar-live-api-monitor
+  cancel-in-progress: true
+
+jobs:
+  synthetic-api-checks:
+    name: Public API synthetic checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check deployed API endpoints
+        run: python ops/live_api_smoke.py
