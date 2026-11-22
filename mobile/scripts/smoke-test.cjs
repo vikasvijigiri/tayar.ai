@@ -82,9 +82,9 @@ if (!app.includes("fontScale")) throw new Error("Bottom navigation must account 
 if (!app.includes("maxWidth:contentMaxWidth") || !app.includes("maxWidth:520")) throw new Error("Content columns must be constrained on wide devices");
 if (!app.includes("minWidth:48") || !app.includes("minHeight:56")) throw new Error("Bottom navigation touch targets must remain accessible");
 console.log("Responsive layout checks passed: compact phones, font scale, constrained wide layouts and touch target sizing");
-const touchableTags = [...app.matchAll(/<TouchableOpacity\\b[^>]*>/gs)].map(([tag]) => tag);
+const touchableTags = [...app.matchAll(/<TouchableOpacity\b[^>]*>/gs)].map(([tag]) => tag);
 if (touchableTags.length === 0) throw new Error("No interactive touch surfaces found; accessibility audit must not pass vacuously");
-const missingButtonRole = touchableTags.filter((tag) => !/\\baccessibilityRole="button"/.test(tag));
+const missingButtonRole = touchableTags.filter((tag) => !/\baccessibilityRole="button"/.test(tag));
 if (missingButtonRole.length > 0) {
   throw new Error("Found " + missingButtonRole.length + " TouchableOpacity elements without accessibilityRole=button out of " + touchableTags.length);
 }
