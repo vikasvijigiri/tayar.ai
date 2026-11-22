@@ -58,7 +58,6 @@ export function FormField({
         maxLength={maxLength}
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}
-        accessibilityRole="text"
         testID={testID}
         selectionColor={colors.accentPrimary}
         cursorColor={colors.accentPrimary}
