@@ -32,6 +32,18 @@ jobs:
             exit 1
           fi
 
+      - name: Detect authenticated test credentials
+        id: qa_config
+        env:
+          TEST_PHONE: ${{ secrets.TEST_PHONE }}
+          TEST_OTP: ${{ secrets.TEST_OTP }}
+        run: |
+          if [[ -n "$TEST_PHONE" && -n "$TEST_OTP" ]]; then
+            echo "auth_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "auth_enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -74,7 +86,7 @@ jobs:
           maestro test .maestro/auth-validation.yaml 2>&1 | tee qa-artifacts/auth-validation.log
 
       - name: Run authenticated navigation (when test credentials exist)
-        if: ${{ secrets.TEST_PHONE != '' && secrets.TEST_OTP != '' }}
+        if: ${{ steps.qa_config.outputs.auth_enabled == 'true' }}
         env:
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_OTP: ${{ secrets.TEST_OTP }}
@@ -84,7 +96,7 @@ jobs:
           maestro test -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml 2>&1 | tee qa-artifacts/authenticated-navigation.log
 
       - name: Explain skipped authenticated test
-        if: ${{ secrets.TEST_PHONE == '' || secrets.TEST_OTP == '' }}
+        if: ${{ steps.qa_config.outputs.auth_enabled != 'true' }}
         run: |
           echo "Authenticated journey skipped: configure TEST_PHONE and TEST_OTP as repository Actions secrets for a dedicated Supabase test project." >> "$GITHUB_STEP_SUMMARY"
 
