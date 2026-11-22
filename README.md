@@ -76,8 +76,7 @@ Tayar.ai includes a browser-based development container. No local Node.js, Pytho
 3. Wait for the post-create setup to install the locked mobile dependencies and backend development requirements.
 4. Start the API from the repository root:
    `cd backend && ../backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`.
-5. In a second terminal, start Expo:
-   `cd mobile && npx expo start --host tunnel`.
+5. In a second terminal, run `cd mobile && npm run typecheck && npm test`. Android device UI tests run in GitHub Actions because Codespaces does not support Android emulators or USB-connected phones.
 
 Codespaces forwards API port 8000 and Expo Metro port 8081. Add development credentials only through GitHub Codespaces Secrets or the Codespaces environment; never put real credentials in repository files. Use a dedicated non-production Supabase project and test accounts.
 
