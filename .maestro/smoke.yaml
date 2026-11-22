@@ -1,4 +1,7 @@
 appId: ai.tayar.adaptive
+tags:
+  - smoke
 ---
 - launchApp
-- assertVisible: "One step closer"
+- assertVisible: "Continue"
+- assertVisible: "Continue with Google"
