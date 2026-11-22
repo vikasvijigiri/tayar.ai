@@ -1,5 +1,6 @@
-appId: ai.tayar.adaptive
 flows:
   - smoke.yaml
   - auth-validation.yaml
   - authenticated-navigation.yaml
+executionOrder:
+  continueOnFailure: false
