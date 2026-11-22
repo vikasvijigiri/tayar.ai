@@ -1,4 +1,4 @@
-import React from "react";
+import React, { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { colors, typography } from "../theme/tokens";
 
@@ -6,14 +6,16 @@ type PageHeaderProps = {
   eyebrow: string;
   title: string;
   description: string;
+  leadingContent?: ReactNode;
   compact?: boolean;
 };
 
 /** Shared accessible heading hierarchy for learner-facing screens. */
-export function PageHeader({ eyebrow, title, description, compact = false }: PageHeaderProps) {
+export function PageHeader({ eyebrow, title, description, leadingContent, compact = false }: PageHeaderProps) {
   return (
     <View style={styles.container} accessible={false}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
+      {leadingContent}
       <Text accessibilityRole="header" style={[styles.title, compact && styles.titleCompact]}>
         {title}
       </Text>
