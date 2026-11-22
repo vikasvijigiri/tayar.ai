@@ -4,3 +4,7 @@ flows:
   - authenticated-navigation.yaml
 executionOrder:
   continueOnFailure: false
+testOutputDir: qa-artifacts/maestro
+platform:
+  android:
+    disableAnimations: true
