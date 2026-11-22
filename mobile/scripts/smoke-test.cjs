@@ -60,6 +60,7 @@ console.log("Phone OTP, Google PKCE and minimal login source checks passed");
 if (!app.includes("const authenticatedFetch") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh and retry expired sessions");
 if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight");
 if (!app.includes("sessionEpoch.current")) throw new Error("Logout must invalidate an in-flight refresh");
+if (!app.includes("const verifyOtp = async () => {\n    sessionEpoch.current += 1;") || !app.includes("const signInWithGoogle = async () => {\n    sessionEpoch.current += 1;")) throw new Error("New sign-in must invalidate stale in-flight refreshes");
 if (!app.includes("tokenRef.current = token") || !app.includes("const currentToken = tokenRef.current")) throw new Error("Authenticated requests must use the latest access token");
 if (!app.includes("lastSent?.phone === normalizedPhone") || !app.includes("at: Date.now()")) throw new Error("OTP resend cooldown must be scoped to the destination phone");
 if (!app.includes("expiresAt: Date.now() + 5 * 60 * 1000")) throw new Error("Supabase public configuration must have a short cache lifetime");
