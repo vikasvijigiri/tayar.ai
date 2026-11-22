@@ -75,12 +75,12 @@ jobs:
         working-directory: mobile
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build x86_64 debug APK
+      - name: Build x86_64 release APK with embedded JavaScript bundle
         working-directory: mobile
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain assembleDebug -PreactNativeArchitectures=x86_64
+          ./gradlew --no-daemon --console=plain assembleRelease -PreactNativeArchitectures=x86_64
 
       - name: Install Maestro CLI
         run: |
@@ -117,7 +117,7 @@ jobs:
               sleep 5
             done
             adb shell pm path android >/dev/null
-            adb install -r mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
             maestro test --format junit --output qa-artifacts/smoke.xml .maestro/smoke.yaml
             maestro test --format junit --output qa-artifacts/auth-validation.xml .maestro/auth-validation.yaml
             if [ -n "${TEST_PHONE:-}" ] && [ -n "${TEST_OTP:-}" ]; then
