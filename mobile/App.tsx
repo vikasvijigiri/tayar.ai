@@ -18,6 +18,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
+import { C } from "./src/theme/tokens";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -40,11 +41,6 @@ async function apiFetch(
 function createIdempotencyKey(): string {
   return Crypto.randomUUID();
 }
-const C = {
-  bg: "#0A1020", panel: "#121C30", panel2: "#17243B", text: "#F4F7FC",
-  muted: "#9AAAC3", teal: "#53E0C1", blue: "#85A9FF", amber: "#FFC76A",
-  border: "#263650", red: "#FF7D86",
-};
 
 type ApiStatus = "checking" | "online" | "offline";
 type AppScreen = "Today" | "Learn" | "Practice" | "Progress" | "Revision" | "Services";
