@@ -69,7 +69,7 @@ Never commit API keys. Never place a Supabase service-role key or AI key in the 
 
 ## Mobile QA
 
-The mobile QA architecture is documented in [mobile/QA.md](mobile/QA.md). Maestro YAML flows live in [.maestro/](.maestro/). The Mobile E2E workflow builds a debug APK and runs tagged smoke tests on Maestro Cloud when MAESTRO_CLOUD_API_KEY and MAESTRO_PROJECT_ID are configured. A separate manual-only workflow runs the same smoke flows on a physical Android handset attached to a private self-hosted runner labelled self-hosted, linux and android-device. Authenticated navigation additionally requires TEST_PHONE and TEST_OTP secrets backed by a dedicated non-production Supabase test project.
+The mobile QA architecture is documented in [mobile/QA.md](mobile/QA.md). Maestro YAML flows live in [.maestro/](.maestro/). The Mobile E2E workflow builds a debug APK and runs Maestro smoke and input-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. A separate manual-only workflow runs the same smoke flows on a physical Android handset attached to a private self-hosted runner labelled self-hosted, linux and android-device. Authenticated navigation additionally requires TEST_PHONE and TEST_OTP secrets backed by a dedicated non-production Supabase test project.
 
 The checked-in UI flows cover app launch, malformed-phone validation and authenticated navigation. They do not replace backend tests for grading, RLS, idempotency, token refresh or AI provider failure handling. See mobile/QA.md for the full scenario matrix and known gaps.
 
