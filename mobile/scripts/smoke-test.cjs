@@ -86,3 +86,10 @@ const touchableCount = (app.match(/<TouchableOpacity\\b/g) || []).length;
 const buttonRoleCount = (app.match(/<TouchableOpacity[^>]*\\baccessibilityRole="button"/g) || []).length;
 if (touchableCount !== buttonRoleCount) throw new Error("Every interactive touch surface must expose button semantics to assistive technology");
 console.log("Accessibility checks passed: every touch surface exposes button semantics");
+
+if (!app.includes('from "./src/theme/tokens"')) throw new Error("App must consume the shared design token module");
+const theme = fs.readFileSync('src/theme/tokens.ts', 'utf8');
+for (const token of ['background', 'surfaceRaised', 'textPrimary', 'accentPrimary', 'spacing', 'radii', 'typography', 'layout', 'motion']) {
+  if (!theme.includes(token)) throw new Error("Missing shared design token group or semantic token: " + token);
+}
+console.log("Design system checks passed: centralized semantic colors, spacing, radii, type, layout and motion tokens");
