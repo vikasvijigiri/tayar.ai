@@ -69,7 +69,7 @@ jobs:
       - name: Run launch and validation flows
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           maestro test .maestro/smoke.yaml 2>&1 | tee qa-artifacts/smoke.log
           maestro test .maestro/auth-validation.yaml 2>&1 | tee qa-artifacts/auth-validation.log
 
