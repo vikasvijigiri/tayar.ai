@@ -77,7 +77,7 @@ Manos MCP is intentionally optional. If later needed in a Linux environment with
 
 The Mobile E2E workflow:
 
-- Builds an x86_64 debug APK from the Expo app.
+- Builds an x86_64 release APK with the JavaScript bundle embedded, so Maestro can launch the app without a separate Metro server.
 - Starts a Pixel 7 Pro / Android 15 emulator using `reactivecircus/android-emulator-runner`.
 - Installs Maestro CLI.
 - Runs the smoke and malformed-phone validation flows.
