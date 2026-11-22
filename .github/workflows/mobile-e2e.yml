@@ -25,7 +25,7 @@ concurrency:
 jobs:
   maestro-cloud:
     name: Android UI regression (Maestro Cloud)
-    # Repository secrets are unavailable to fork PRs. Do not expose test credentials to forks.
+    # Never expose repository secrets to fork-originated pull requests.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -57,34 +57,70 @@ jobs:
         working-directory: mobile
         run: npx expo install --check
 
-      - name: Generate Android project
+      - name: Generate Android native project
         working-directory: mobile
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build debug APK for cloud UI testing
+      - name: Build x86_64-compatible debug APK for Maestro Cloud
         working-directory: mobile
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain assembleDebug
+          ./gradlew --no-daemon --console=plain assembleDebug -PreactNativeArchitectures=x86_64
 
-      - name: Run Maestro flows in cloud
-        id: maestro
-        uses: mobile-dev-inc/action-maestro-cloud@v1
+      - name: Explain missing Maestro Cloud configuration
+        if: ${{ secrets.MAESTRO_CLOUD_API_KEY == '' || secrets.MAESTRO_PROJECT_ID == '' }}
+        run: |
+          echo "Maestro Cloud execution skipped. Add MAESTRO_CLOUD_API_KEY and MAESTRO_PROJECT_ID in repository Actions secrets." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run public smoke and input-validation flows
+        if: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.MAESTRO_PROJECT_ID != '' }}
+        id: maestro_smoke
+        uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
         with:
           api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
           project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
           app-file: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           workspace: .maestro
+          include-tags: smoke
+          device-model: pixel_7
+          device-os: android-34
           timeout: 45
 
-      - name: Publish Maestro run link
+      - name: Run authenticated navigation flow
+        if: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.MAESTRO_PROJECT_ID != '' && secrets.TEST_PHONE != '' && secrets.TEST_OTP != '' }}
+        id: maestro_authenticated
+        uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
+        with:
+          api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
+          project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
+          app-file: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          workspace: .maestro
+          include-tags: authenticated
+          device-model: pixel_7
+          device-os: android-34
+          timeout: 45
+          env: |
+            TEST_PHONE=${{ secrets.TEST_PHONE }}
+            TEST_OTP=${{ secrets.TEST_OTP }}
+
+      - name: Explain skipped authenticated suite
+        if: ${{ secrets.TEST_PHONE == '' || secrets.TEST_OTP == '' }}
+        run: |
+          echo "Authenticated navigation flow skipped. Configure TEST_PHONE and TEST_OTP using a dedicated Supabase test project with a fixed test OTP." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish Maestro Cloud report links
         if: always()
         env:
-          CONSOLE_URL: ${{ steps.maestro.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
+          SMOKE_URL: ${{ steps.maestro_smoke.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
+          AUTH_URL: ${{ steps.maestro_authenticated.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
+          SMOKE_STATUS: ${{ steps.maestro_smoke.outputs.MAESTRO_CLOUD_UPLOAD_STATUS }}
+          AUTH_STATUS: ${{ steps.maestro_authenticated.outputs.MAESTRO_CLOUD_UPLOAD_STATUS }}
         run: |
-          if [ -n "${CONSOLE_URL:-}" ]; then
-            echo "Maestro Cloud report: ${CONSOLE_URL}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Maestro Cloud did not return a console URL. Check the action logs." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo "## Maestro Cloud"
+            echo "- Smoke status: ${SMOKE_STATUS:-not run}"
+            echo "- Smoke report: ${SMOKE_URL:-not available}"
+            echo "- Authenticated status: ${AUTH_STATUS:-not run}"
+            echo "- Authenticated report: ${AUTH_URL:-not available}"
+          } >> "$GITHUB_STEP_SUMMARY"
