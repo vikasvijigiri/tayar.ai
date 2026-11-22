@@ -22,6 +22,7 @@ import { C, layout } from "./src/theme/tokens";
 import { PageHeader } from "./src/components/PageHeader";
 import { SurfaceCard } from "./src/components/SurfaceCard";
 import { ActionButton } from "./src/components/ActionButton";
+import { FormField } from "./src/components/FormField";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -563,10 +564,10 @@ export default function App() {
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
               <SurfaceCard>
                 {!otpSent ? <>
-                  <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
+                  <FormField value={phone} onChangeText={setPhone} placeholder="+91 Phone number" keyboardType="phone-pad" textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Continue</Text>}</TouchableOpacity>
                 </> : <>
-                  <TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" placeholderTextColor="#71829D" keyboardType="number-pad" autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" accessibilityLabel="SMS verification code" style={s.input} editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
+                  <FormField value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" keyboardType="number-pad" textContentType="oneTimeCode" accessibilityLabel="SMS verification code" editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
                   <TouchableOpacity onPress={verifyOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Verify</Text>}</TouchableOpacity>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Resend code</Text></TouchableOpacity>
                   <TouchableOpacity accessibilityRole="button" onPress={() => {setOtpSent(false);setOtp("");setAuthMessage("");setAuthError(false);}} style={s.modeSwitch}><Text style={s.modeText}>Change number</Text></TouchableOpacity>
