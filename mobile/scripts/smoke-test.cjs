@@ -100,7 +100,7 @@ console.log("Design system checks passed: centralized semantic colors, spacing, 
 if (!app.includes('from "./src/components/PageHeader"')) throw new Error("Learner screens must use the shared page header");
 if ((app.match(/<PageHeader\b/g) || []).length !== 7) throw new Error("All seven learner screen headings must use the shared page header");
 const pageHeader = fs.readFileSync('src/components/PageHeader.tsx', 'utf8');
-if (!pageHeader.includes('accessibilityRole="header"') || !pageHeader.includes('titleCompact')) throw new Error("Page headers must expose heading semantics and compact-phone typography");
+if (!pageHeader.includes('accessibilityRole="header"') || !pageHeader.includes('titleCompact') || !pageHeader.includes("leadingContent?: ReactNode") || !pageHeader.includes("{leadingContent}")) throw new Error("Page headers must expose heading semantics, compact-phone typography and optional leading content");
 console.log("Shared UI checks passed: seven screen headers use accessible responsive typography");
 
 if ((app.match(/<SurfaceCard\b/g) || []).length !== 11 || (app.match(/<\/SurfaceCard>/g) || []).length !== 11) throw new Error("All eleven shared content cards must use SurfaceCard with balanced wrappers");
