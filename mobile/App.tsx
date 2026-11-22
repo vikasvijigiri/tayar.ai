@@ -20,6 +20,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
 import { C, layout } from "./src/theme/tokens";
 import { PageHeader } from "./src/components/PageHeader";
+import { SurfaceCard } from "./src/components/SurfaceCard";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -559,7 +560,7 @@ export default function App() {
           <ScrollView contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:layout.comfortableReadingWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
             <View style={s.minimalAuth}>
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
-              <View style={s.card}>
+              <SurfaceCard>
                 {!otpSent ? <>
                   <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Continue</Text>}</TouchableOpacity>
@@ -572,7 +573,7 @@ export default function App() {
                 <View style={s.authDivider}><View style={s.authDividerLine}/><Text style={s.authDividerText}>OR</Text><View style={s.authDividerLine}/></View>
                 <TouchableOpacity onPress={signInWithGoogle} disabled={authLoading} accessibilityRole="button" style={[s.googleButton,authLoading&&s.dimmed]}><Text style={s.googleButtonText}>Continue with Google</Text></TouchableOpacity>
                 {authMessage !== "" && <Text accessibilityRole="alert" style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
-              </View>
+              </SurfaceCard>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -869,11 +870,11 @@ export default function App() {
           <Shortcut title="Check services" detail="API, readiness and metrics" onPress={() => { setScreen("Services"); checkAllServices(); }}/>
         </View>
         <Text style={s.section}>Your next best action</Text>
-        <View style={s.card}>
+        <SurfaceCard>
           <Text style={s.cardTitle}>{summary?.weakest_topic ? `Review ${summary.weakest_topic.topic}` : summary && summary.total_attempts >= 10 ? "Broaden your topic coverage" : "Establish your baseline"}</Text>
           <Text style={s.body}>{summary?.weakest_topic ? `${summary.weakest_topic.topic} currently has your lowest tracked accuracy (${summary.weakest_topic.accuracy_pct}%). Review the solution steps, then revisit missed questions after a short gap.` : summary && summary.total_attempts >= 10 ? `You have logged ${summary.total_attempts} answers. Keep building accuracy and retention across the verified topic bank.` : "Complete a short timed diagnostic to establish your baseline. Practice uses source-verified questions only."}</Text>
           <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start / restart test →</Text></TouchableOpacity>
-        </View>
+        </SurfaceCard>
         </>}
         {screen === "Learn" && <>
           <PageHeader eyebrow="YOUR LEARNING HUB" title="Learn at your pace." description="Start from the basics. Build confidence one topic at a time." compact={compactWidth} />
@@ -891,20 +892,20 @@ export default function App() {
           <View style={[s.courseCard,s.courseMuted]}><View style={s.courseIconMuted}><Text style={s.courseGlyphMuted}>▦</Text></View><View style={s.courseCopy}><Text style={s.courseTitle}>SSC CGL</Text><Text style={s.courseDescription}>Structured learning path and practice modules are being prepared.</Text><Text style={s.comingSoon}>COMING SOON</Text></View></View>
           <View style={[s.courseCard,s.courseMuted]}><View style={s.courseIconMuted}><Text style={s.courseGlyphMuted}>▦</Text></View><View style={s.courseCopy}><Text style={s.courseTitle}>SSC CHSL</Text><Text style={s.courseDescription}>A beginner-friendly course path is planned for this exam.</Text><Text style={s.comingSoon}>COMING SOON</Text></View></View>
           <Text style={s.section}>Your learning routine</Text>
-          <View style={s.card}>
+          <SurfaceCard>
             {[
               {n:"01",title:"Learn one concept",detail:"Understand the method before memorising shortcuts."},
               {n:"02",title:"Try a few questions",detail:"Apply the concept with guided practice."},
               {n:"03",title:"Review every mistake",detail:"See why an answer is right and what to improve."},
               {n:"04",title:"Return and revise",detail:"Revisit difficult topics after a gap."},
             ].map((step,index)=><View key={step.n} style={s.learningStep}><View style={s.stepNumber}><Text style={s.stepNumberText}>{step.n}</Text></View><View style={s.stepCopy}><Text style={s.stepTitle}>{step.title}</Text><Text style={s.small}>{step.detail}</Text></View>{index<3&&<View style={s.stepConnector}/>}</View>)}
-          </View>
+          </SurfaceCard>
           <Text style={s.section}>Learn with us in Nizamabad</Text>
           <View style={s.classroomCard}><Text style={s.classroomEyebrow}>OFFLINE + ONLINE LEARNING</Text><Text style={s.classroomTitle}>A teacher beside you. A plan in your pocket.</Text><Text style={s.classroomBody}>Use the app for daily practice and progress. Join classroom learning for guided teaching, doubt clearing and personal support at our Nizamabad coaching centre.</Text><View style={s.classroomPill}><Text style={s.classroomPillText}>NIZAMABAD · TELANGANA</Text></View></View>
         </>}
         {screen === "Practice" && <>
         <PageHeader eyebrow="RRB NTPC · QUANTITATIVE APTITUDE" title="Practice with purpose." description="Timed sets · verified questions · worked solutions" compact={compactWidth} />
-        <View style={s.card}>
+        <SurfaceCard>
           <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
           <Text style={s.small}>{questionStrategy === "weak_topic_focus" && focusTopic ? `Adaptive focus · ${focusTopic.topic} · ${focusTopic.accuracy_pct}% recent accuracy` : questionStrategy === "mixed_baseline" && focusTopic ? `Mixed set · ${focusTopic.topic} needs attention; the verified bank is still too small for a full focused set.` : "Mixed verified practice · question focus adapts as your attempt history grows."}</Text>
           {questions.length > 0 && <>
@@ -944,13 +945,13 @@ export default function App() {
           {questionError!==""&&questions.length===0&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
           <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start a new test / restart set ↻</Text></TouchableOpacity>
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>View analytics →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Revision plan →</Text></TouchableOpacity></View>
-        </View>
+        </SurfaceCard>
         </>}
         {screen === "Progress" && <>
           <PageHeader eyebrow="YOUR GROWTH" title={"Look how far\nyou can go."} description="Real progress from your saved practice. Every attempt counts." compact={compactWidth} /><View style={s.progressWelcome}><Text style={s.progressWelcomeTitle}>{summary && summary.total_attempts > 0 ? "You are building consistency." : "Your progress story starts with one answer."}</Text><Text style={s.progressWelcomeText}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded so far. Keep learning from every attempt.` : "Complete a short practice set to unlock your personal performance insights."}</Text></View>
           <View style={s.grid}><Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/><Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/><Metric label="QUESTIONS ANSWERED" value={summary?String(summary.total_attempts):"0"} color={C.teal}/><Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds==null?"—":String(summary.average_time_seconds)+"s"} color={C.blue}/><Metric label="REPEAT ACCURACY" value={summary?.repeat_accuracy_pct==null?"—":String(summary.repeat_accuracy_pct)+"%"} color={C.amber}/></View><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} activeOpacity={0.82} style={s.revisionBanner}><View style={s.revisionIcon}><Text style={s.revisionGlyph}>↻</Text></View><View style={{flex:1}}><Text style={s.revisionTitle}>Your revision plan</Text><Text style={s.revisionText}>{summary?.weakest_topic ? `Focus on ${summary.weakest_topic.topic} next.` : "Your weak topics will appear here as you practise."}</Text></View><Text style={s.revisionArrow}>›</Text></TouchableOpacity>
-          <View style={s.card}><Text style={s.cardTitle}>Topic performance</Text>{summary?.topic_performance?.length?summary.topic_performance.map(topic=><View key={topic.slug} style={s.topicRow}><View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View><View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View><Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average response time</Text></View>):<Text style={s.body}>Topic analytics appear after verified answers have been submitted and saved.</Text>}<Text style={[s.small,{marginTop:12}]}>Repeat accuracy is a simple signal from repeated questions, not a formal memory-retention score.</Text></View>
-          <View style={s.card}>
+          <SurfaceCard><Text style={s.cardTitle}>Topic performance</Text>{summary?.topic_performance?.length?summary.topic_performance.map(topic=><View key={topic.slug} style={s.topicRow}><View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View><View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View><Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average response time</Text></View>):<Text style={s.body}>Topic analytics appear after verified answers have been submitted and saved.</Text>}<Text style={[s.small,{marginTop:12}]}>Repeat accuracy is a simple signal from repeated questions, not a formal memory-retention score.</Text></SurfaceCard>
+          <SurfaceCard>
             <View style={s.serviceHeading}><Text style={s.cardTitle}>Recent answer history</Text><TouchableOpacity accessibilityRole="button" onPress={() => { setScreen("Services"); checkService("history","/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0"); }}><Text style={s.crossLinkText}>Check API →</Text></TouchableOpacity></View>
             {historyLoading ? <ActivityIndicator color={C.teal} style={{marginTop:12}}/> : attemptHistory.length ? attemptHistory.slice(0,10).map((attempt,index)=><View key={attempt.question_id + "-" + index} style={s.historyRow}>
               <View style={s.serviceHeading}><Text style={[s.historyResult,{color:attempt.is_correct?C.teal:C.red}]}>{attempt.is_correct?"CORRECT":"REVIEW"}</Text><Text style={s.small}>{attempt.elapsed_ms==null?"—":(attempt.elapsed_ms/1000).toFixed(1)+"s"}</Text></View>
@@ -959,18 +960,18 @@ export default function App() {
               <Text style={s.small}>Your answer: {attempt.answer_given || "—"} · Source: {attempt.source_document || "verified source"}{attempt.source_page ? " · page " + attempt.source_page : ""}</Text>
             </View>) : <Text style={s.body}>Your answer history will appear here after the first saved response. If it stays empty, check service readiness and sign-in status.</Text>}
             <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Practice again →</Text></TouchableOpacity>
-          </View>
+          </SurfaceCard>
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.crossLink}><Text style={s.crossLinkText}>Practice another set →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Review weak topics →</Text></TouchableOpacity></View>
         </>}
         {screen === "Revision" && <>
           <PageHeader eyebrow="REVISION WORKSPACE" title="Make weak areas stronger." description="Use recorded performance to choose what to revisit." compact={compactWidth} />
-          <View style={s.card}><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.primaryButton}><Text style={s.primaryButtonText}>Start revision practice</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>See topic analytics →</Text></TouchableOpacity></View>
-          <View style={s.card}><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Go to practice workspace →</Text></TouchableOpacity>
+          <SurfaceCard><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.primaryButton}><Text style={s.primaryButtonText}>Start revision practice</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>See topic analytics →</Text></TouchableOpacity></SurfaceCard>
+          <SurfaceCard><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></SurfaceCard><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Go to practice workspace →</Text></TouchableOpacity>
         </>}
         {screen === "Services" && <>
-          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><View style={s.card}><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><TouchableOpacity accessibilityRole="button" onPress={signOut} activeOpacity={0.82} style={s.signOutButton}><Text style={s.signOutText}>Sign out securely</Text></TouchableOpacity></View>
+          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><TouchableOpacity accessibilityRole="button" onPress={signOut} activeOpacity={0.82} style={s.signOutButton}><Text style={s.signOutText}>Sign out securely</Text></TouchableOpacity></SurfaceCard>
           <PageHeader eyebrow="SERVICE CENTRE" title="Learning services." description="Check endpoints when something feels stuck." compact={compactWidth} />
-          <View style={s.card}><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></View>
+          <SurfaceCard><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></SurfaceCard>
           {[
             {key:"health",label:"Liveness",path:"/health",description:"Is the API process responding?"},
             {key:"ready",label:"Readiness",path:"/health/ready",description:"Is the database dependency configured?"},
@@ -1026,7 +1027,7 @@ const s=StyleSheet.create({
   googleButton:{alignItems:"center",justifyContent:"center",minHeight:48,borderRadius:12,borderWidth:1,borderColor:C.border,backgroundColor:C.panel2,paddingHorizontal:14},googleButtonText:{color:C.text,fontSize:14,fontWeight:"700"},
   brandBlock:{marginBottom:30},brand:{color:C.text,fontSize:24,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},
   authHero:{marginBottom:22},eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},authTitle:{color:C.text,fontSize:31,lineHeight:37,fontWeight:"800",letterSpacing:-.6,marginBottom:12},
-  body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
+  body:{color:C.muted,fontSize:12,lineHeight:19},
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
   input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
   topicRow:{marginTop:13},topicHeader:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},topicName:{color:C.text,fontSize:12,fontWeight:"700"},topicAccuracy:{color:C.teal,fontSize:12,fontWeight:"800"},topicTrack:{height:5,borderRadius:8,backgroundColor:"#263650",marginTop:8,marginBottom:6,overflow:"hidden"},topicFill:{height:5,backgroundColor:C.teal,borderRadius:8},progressRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},progressValue:{color:C.text,fontSize:13,fontWeight:"800"},
