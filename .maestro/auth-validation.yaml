@@ -2,7 +2,8 @@ appId: ai.tayar.adaptive
 tags:
   - smoke
 ---
-- launchApp
+- launchApp:
+    clearState: true
 - tapOn: "Phone number with country code"
 - inputText: "12345"
 - tapOn: "Continue"
