@@ -570,7 +570,7 @@ export default function App() {
                   <TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" placeholderTextColor="#71829D" keyboardType="number-pad" autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" accessibilityLabel="SMS verification code" style={s.input} editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
                   <TouchableOpacity onPress={verifyOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Verify</Text>}</TouchableOpacity>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Resend code</Text></TouchableOpacity>
-                  <TouchableOpacity accessibilityRole="button" onPress={() => {setOtpSent(false);setOtp("");setAuthMessage("");setAuthError(false);}} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Change number</Text></TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" onPress={() => {setOtpSent(false);setOtp("");setAuthMessage("");setAuthError(false);}} style={s.modeSwitch}><Text style={s.modeText}>Change number</Text></TouchableOpacity>
                 </>}
                 <View style={s.authDivider}><View style={s.authDividerLine}/><Text style={s.authDividerText}>OR</Text><View style={s.authDividerLine}/></View>
                 <TouchableOpacity onPress={signInWithGoogle} disabled={authLoading} accessibilityRole="button" style={[s.googleButton,authLoading&&s.dimmed]}><Text style={s.googleButtonText}>Continue with Google</Text></TouchableOpacity>
@@ -846,7 +846,7 @@ export default function App() {
       <ScrollView style={s.contentScroll} contentContainerStyle={[s.page,{paddingHorizontal:pageGutter,width:"100%",maxWidth:contentMaxWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
         <View style={s.top}>
           <View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View>
-          <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Services")} accessibilityRole="button" accessibilityLabel="Open profile and settings" style={s.avatar}><Text style={{color:C.teal,fontWeight:"900",fontSize:17}}>V</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Services")} accessibilityLabel="Open profile and settings" style={s.avatar}><Text style={{color:C.teal,fontWeight:"900",fontSize:17}}>V</Text></TouchableOpacity>
         </View>
         <ServiceStatus status={apiStatus}/>
         
