@@ -101,7 +101,7 @@ The checked-in flows cover unauthenticated launch, local phone validation and (w
 - .maestro/smoke.yaml — tag smoke; launches the unauthenticated app and checks the Continue and Continue with Google controls.
 - .maestro/auth-validation.yaml — tag smoke; submits a malformed phone number and verifies local validation.
 - .maestro/authenticated-navigation.yaml — tag authenticated; signs in with a configured test phone and fixed test OTP, navigates Today/Learn/Practice/Progress/Services, then signs out.
-- .maestro/config.yaml — registers the three flows and app package identifier.
+- .maestro/config.yaml — selects the three flows, stops the suite on failure, stores Maestro artifacts and disables Android system animations on Maestro Cloud.
 
 ## Required GitHub Actions secrets
 
