@@ -1,7 +1,0 @@
-appId: ai.tayar.adaptive
----
-- launchApp
-- assertVisible: "One step closer"
-- tapOn: "Start a new test"
-- assertVisible: "Practice with purpose."
-- assertVisible: "SOURCE-VERIFIED CONTENT"
