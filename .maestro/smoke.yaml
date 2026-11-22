@@ -1,0 +1,4 @@
+appId: ai.tayar.adaptive
+---
+- launchApp
+- assertVisible: "One step closer"
