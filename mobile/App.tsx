@@ -18,7 +18,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
-import { C } from "./src/theme/tokens";
+import { C, layout } from "./src/theme/tokens";
 import { PageHeader } from "./src/components/PageHeader";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
@@ -125,9 +125,9 @@ function isAnswerFeedback(value: unknown): value is AnswerFeedback {
 
 export default function App() {
   const { width: viewportWidth, fontScale } = useWindowDimensions();
-  const compactWidth = viewportWidth < 360;
-  const pageGutter = viewportWidth < 360 ? 16 : viewportWidth < 430 ? 20 : 24;
-  const contentMaxWidth = Math.min(viewportWidth, 760);
+  const compactWidth = viewportWidth < layout.compactBreakpoint;
+  const pageGutter = viewportWidth < 360 ? 16 : viewportWidth < layout.regularBreakpoint ? 20 : 24;
+  const contentMaxWidth = Math.min(viewportWidth, layout.contentMaxWidth);
   const [screen, setScreen] = useState<AppScreen>("Today");
   const screenMotion = useRef(new Animated.Value(1)).current;
   const [serviceChecks, setServiceChecks] = useState<Record<string, ServiceCheck>>({});
@@ -556,7 +556,7 @@ export default function App() {
       <SafeAreaView style={s.safe}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
         <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:520,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:layout.comfortableReadingWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
             <View style={s.minimalAuth}>
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
               <View style={s.card}>
@@ -985,7 +985,7 @@ export default function App() {
         <Text style={s.footer}>Small steps. Strong preparation. · Tayar.ai</Text>
       </ScrollView>
     </Animated.View>
-      <View style={[s.bottomBar,{paddingBottom:Math.max(8,Math.round(8*fontScale)),paddingHorizontal:compactWidth?4:10}]}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={[s.tabButton,{minWidth:48,minHeight:56}]}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
+      <View style={[s.bottomBar,{paddingBottom:Math.max(8,Math.round(8*fontScale)),paddingHorizontal:compactWidth?4:10}]}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={[s.tabButton,{minWidth:layout.minimumTouchTarget,minHeight:layout.minimumTabHeight}]}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
     </SafeAreaView>
   );
 }
