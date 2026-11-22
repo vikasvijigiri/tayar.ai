@@ -67,6 +67,12 @@ Render uses `render.yaml`. Configure the environment variables in the Render das
 
 Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql`, then `backend/supabase/seed_verified_math.sql`, and finally `backend/supabase/seed_assertions.sql` in Supabase SQL Editor to publish and validate 50 source-verified questions across twelve topics. The incremental `seed_verified_math_expansion.sql` adds the first 24-question expansion to an existing 14-question installation; `seed_verified_math_expansion_12.sql` adds twelve more questions and seven topics to an existing 38-question installation. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
+## Mobile QA
+
+The mobile QA architecture is documented in [mobile/QA.md](mobile/QA.md). Maestro YAML flows live in [.maestro/](.maestro/). The Mobile E2E workflow builds a debug APK and runs tagged smoke tests on Maestro Cloud when MAESTRO_CLOUD_API_KEY and MAESTRO_PROJECT_ID are configured. A separate manual-only workflow runs the same smoke flows on a physical Android handset attached to a private self-hosted runner labelled self-hosted, linux and android-device. Authenticated navigation additionally requires TEST_PHONE and TEST_OTP secrets backed by a dedicated non-production Supabase test project.
+
+The checked-in UI flows cover app launch, malformed-phone validation and authenticated navigation. They do not replace backend tests for grading, RLS, idempotency, token refresh or AI provider failure handling. See mobile/QA.md for the full scenario matrix and known gaps.
+
 ## CI/CD
 Pushes and pull requests run backend tests, Ruff linting, coverage reporting, dependency audits, mobile type checking/smoke tests, and Android builds. The Android workflow uses the committed npm lockfile (`npm ci`), caches Gradle dependencies, verifies the APK package ID/signature/SHA-256, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts for seven days. No public release is created automatically.
 
