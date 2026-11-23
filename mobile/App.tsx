@@ -559,8 +559,9 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          // authenticatedFetch owns refresh and permanent-session cleanup. Do not
+          // sign out here: a transient refresh failure must remain retryable.
+          throw new Error("Could not authorize this request. Please retry; if your session expired, sign in again.");
         }
         throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
