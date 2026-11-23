@@ -654,6 +654,7 @@ export default function App() {
       setQuestionError("You've reached the end of the currently published verified questions in this set.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setQuestionLoading(true);
     setQuestionError("");
     try {
@@ -665,6 +666,7 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      if (requestEpoch !== sessionEpoch.current) return;
       const next = data.questions;
       setTotalQuestionCount(data.total_count);
       setQuestionStrategy(data.strategy);
@@ -679,7 +681,7 @@ export default function App() {
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
     } finally {
-      setQuestionLoading(false);
+      if (requestEpoch === sessionEpoch.current) setQuestionLoading(false);
     }
   };
 
@@ -695,6 +697,7 @@ export default function App() {
       setQuestionError("Confirm the pending answer using “Retry same answer” before starting another set.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
@@ -702,6 +705,7 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      if (requestEpoch !== sessionEpoch.current) return;
       const nextQuestions = data.questions;
       setQuestions(nextQuestions); setQuestionIndex(0);
       setTestOffset(nextOffset); setCurrentTestSize(nextQuestions.length);
@@ -710,8 +714,8 @@ export default function App() {
       if (nextQuestions.length === 0) throw new Error("No additional verified questions are available in this test cycle.");
       setSelectedAnswer(""); setFeedback(null); setHint(""); sessionDeadline.current = Date.now() + 480000;
       setRemainingSeconds(480); questionStartedAt.current = Date.now();
-    } catch (error) { setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
-    finally { setQuestionLoading(false); }
+    } catch (error) { if (requestEpoch === sessionEpoch.current) setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
+    finally { if (requestEpoch === sessionEpoch.current) setQuestionLoading(false); }
   };
 
   const checkService = async (key: string, path: string) => {
