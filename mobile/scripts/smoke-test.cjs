@@ -62,6 +62,8 @@ console.log("Phone OTP, Google PKCE and minimal login source checks passed");
 if (!app.includes("const authenticatedFetch") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh and retry expired sessions");
 const submitAnswerSource = app.slice(app.indexOf("const submitAnswer = async () => {"), app.indexOf("const requestHint = async () => {"));
 if (/response\.status === 401[\s\S]*await signOut\(\)/.test(submitAnswerSource)) throw new Error("Answer submission must not force logout after a transient refresh failure; authenticatedFetch owns session cleanup");
+if (!submitAnswerSource.includes("requestEpoch !== sessionEpoch.current") || !submitAnswerSource.includes("activeQuestionIdRef.current !== question.id")) throw new Error("Late answer responses must not update state after account or question changes");
+if (!app.includes("hintRequestId.current") || !app.includes("requestId !== hintRequestId.current")) throw new Error("Late AI hints must be discarded after question navigation or account changes");
 if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight");
 if (!app.includes("sessionEpoch.current")) throw new Error("Logout must invalidate an in-flight refresh");
 if (!app.includes("const verifyOtp = async () => {\n    sessionEpoch.current += 1;") || !app.includes("const signInWithGoogle = async () => {\n    sessionEpoch.current += 1;")) throw new Error("New sign-in must invalidate stale in-flight refreshes");
