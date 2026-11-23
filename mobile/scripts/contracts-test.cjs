@@ -51,7 +51,7 @@ try {
     assert.equal(contracts.isQuestionPage(page), true);
     assert.equal(contracts.isQuestionPage({ ...page, questions: [], total_count: 0 }), true);
     assert.equal(contracts.isQuestionPage({ ...page, questions: [], total_count: 10 }), true);
-    assert.equal(contracts.isQuestionPage({ ...page, questions: [] }), false);
+    assert.equal(contracts.isQuestionPage({ ...page, questions: [], total_count: undefined }), false);
     assert.equal(contracts.isQuestionPage({ ...page, total_count: 0 }), false);
     assert.equal(contracts.isQuestionPage({ ...page, strategy: "invented" }), false);
     assert.equal(contracts.isQuestionPage({ ...page, focus_topic: { slug: "x", topic: "X", attempts: 1, accuracy_pct: 101 } }), false);
