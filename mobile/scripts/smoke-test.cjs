@@ -60,6 +60,8 @@ if (!app.includes("Clear account-scoped state before returning to the sign-in sc
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
 
 if (!app.includes("const authenticatedFetch") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh and retry expired sessions");
+const submitAnswerSource = app.slice(app.indexOf("const submitAnswer = async () => {"), app.indexOf("const requestHint = async () => {"));
+if (/response\.status === 401[\s\S]*await signOut\(\)/.test(submitAnswerSource)) throw new Error("Answer submission must not force logout after a transient refresh failure; authenticatedFetch owns session cleanup");
 if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight");
 if (!app.includes("sessionEpoch.current")) throw new Error("Logout must invalidate an in-flight refresh");
 if (!app.includes("const verifyOtp = async () => {\n    sessionEpoch.current += 1;") || !app.includes("const signInWithGoogle = async () => {\n    sessionEpoch.current += 1;")) throw new Error("New sign-in must invalidate stale in-flight refreshes");
