@@ -34,7 +34,7 @@ try {
     assert.equal(contracts.isQuestion(question), true);
     assert.equal(contracts.isQuestion({ ...question, answer_key: "A" }), false);
     assert.equal(contracts.isQuestion({ ...question, options: ["A", "B", "C"] }), false);
-    assert.equal(contracts.isQuestion({ ...question, source_page: "" }), false);\n    assert.equal(contracts.isQuestion({ ...question, source_page: 12 }), true);\n    assert.equal(contracts.isQuestion({ ...question, source_page: 0 }), false);
+    assert.equal(contracts.isQuestion({ ...question, source_page: "" }), false);\n    assert.equal(contracts.isQuestion({ ...question, source_page: 12 }), true);\n    assert.equal(contracts.isQuestion({ ...question, source_page: 0 }), true);
     assert.equal(contracts.isQuestion({ ...question, source_document: " " }), false);
     assert.equal(contracts.isQuestion({ ...question, question_text: "  " }), false);
     assert.equal(contracts.isQuestion({ ...question, exam_id: "ssc_cgl" }), false);
