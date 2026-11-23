@@ -94,7 +94,7 @@ jobs:
           TEST_PHONE: ${{ secrets.TEST_PHONE }}
           TEST_OTP: ${{ secrets.TEST_OTP }}
         with:
-          api-level: 30
+          api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
