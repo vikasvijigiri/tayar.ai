@@ -7,6 +7,7 @@ on:
       - "mobile/**"
       - ".maestro/**"
       - ".github/workflows/mobile-e2e.yml"
+      - ".github/scripts/run-mobile-e2e.sh"
       - ".devcontainer/**"
       - "mobile/QA.md"
       - "README.md"
@@ -16,6 +17,7 @@ on:
       - "mobile/**"
       - ".maestro/**"
       - ".github/workflows/mobile-e2e.yml"
+      - ".github/scripts/run-mobile-e2e.sh"
       - ".devcontainer/**"
       - "mobile/QA.md"
       - "README.md"
@@ -31,10 +33,8 @@ concurrency:
 jobs:
   android-emulator:
     env:
-      # Make TCG visible to both the emulator action and its child emulator process.
       ANDROID_I_WANT_MY_TCG: "yes"
     name: Android emulator UI regression
-    # Never expose test credentials to fork-originated pull requests.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -98,33 +98,13 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          # Keep the emulator action from issuing extra settings-service writes; the
-          # app tests do not depend on system animation or spell-check settings.
           disable-animations: false
           disable-spellchecker: false
           emulator-boot-timeout: 600
-          # TCG is required on hosted runners without nested KVM. Give system_server
-          # enough memory and limit CPU contention after Gradle has completed.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -wipe-data -noaudio -no-boot-anim -camera-back none -accel off -memory 4096 -cores 2 -partition-size 2048
-          script: |
-            set -e
-            mkdir -p qa-artifacts
-            trap 'adb logcat -d -v time 2>/dev/null | grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|tayar" > qa-artifacts/android-crash-diagnostics.log || true; adb exec-out screencap -p > qa-artifacts/final-screen.png 2>/dev/null || true' EXIT
-            adb wait-for-device
-            # Wait for Android framework services, not just the emulator boot flag.
-            for attempt in $(seq 1 60); do
-              if adb shell pm path android >/dev/null 2>&1; then break; fi
-              sleep 5
-            done
-            adb shell pm path android >/dev/null
-            adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
-            maestro test --format junit --output qa-artifacts/smoke.xml .maestro/smoke.yaml
-            maestro test --format junit --output qa-artifacts/auth-validation.xml .maestro/auth-validation.yaml
-            if [ -n "${TEST_PHONE:-}" ] && [ -n "${TEST_OTP:-}" ]; then
-              maestro test --format junit --output qa-artifacts/authenticated-navigation.xml -e TEST_PHONE="$TEST_PHONE" -e TEST_OTP="$TEST_OTP" .maestro/authenticated-navigation.yaml
-            else
-              echo "Authenticated journey skipped: configure TEST_PHONE and TEST_OTP using a dedicated non-production Supabase test project." >> "$GITHUB_STEP_SUMMARY"
-            fi
+          # Keep the action's script input to one command. The checked-in bash file
+          # preserves multiline control flow and makes this test harness independently lintable.
+          script: bash .github/scripts/run-mobile-e2e.sh
 
       - name: Upload emulator QA evidence
         if: always()
