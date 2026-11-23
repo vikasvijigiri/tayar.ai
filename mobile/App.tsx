@@ -110,6 +110,9 @@ export default function App() {
   const answerRequestKeys = useRef<Map<string, { idempotencyKey: string; answer_given: string; elapsed_ms: number }>>(new Map());
   // Keep hint results for this app session to avoid repeated paid inference for the same question.
   const hintCache = useRef<Map<string, string>>(new Map());
+  const hintRequestId = useRef(0);
+  const activeQuestionIdRef = useRef<string | null>(null);
+  activeQuestionIdRef.current = questions[questionIndex]?.id ?? null;
 
   useEffect(() => {
     let active = true;
@@ -299,6 +302,10 @@ export default function App() {
     hintCache.current.clear();
     sessionDeadline.current = null;
     setRemainingSeconds(480);
+    hintRequestId.current += 1;
+    setAnswerLoading(false);
+    setHintLoading(false);
+    setQuestionLoading(false);
     setToken(null);
     setAuthError(cleanup.some((result) => result.status === "rejected"));
     setAuthMessage(cleanup.some((result) => result.status === "rejected")
@@ -480,9 +487,11 @@ export default function App() {
   }, [Boolean(token), questions.length]);
 
   useEffect(() => {
+    hintRequestId.current += 1;
     setSelectedAnswer("");
     setFeedback(null);
     setHint("");
+    setHintLoading(false);
     questionStartedAt.current = Date.now();
   }, [questionIndex]);
 
@@ -527,6 +536,7 @@ export default function App() {
       setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setAnswerLoading(true);
     setQuestionError("");
     try {
@@ -567,6 +577,7 @@ export default function App() {
       }
       if (!isAnswerFeedback(data)) throw new Error("Answer API returned an invalid grading or persistence confirmation.");
       answerRequestKeys.current.delete(question.id);
+      if (requestEpoch !== sessionEpoch.current || activeQuestionIdRef.current !== question.id) return;
       setFeedback(data);
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
@@ -578,13 +589,14 @@ export default function App() {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
+        if (requestEpoch !== sessionEpoch.current || activeQuestionIdRef.current !== question.id) return;
         if (summaryResponse.ok) {
           const summaryData: unknown = await summaryResponse.json().catch(() => null);
-          if (isAttemptSummary(summaryData)) setSummary(summaryData);
+          if (requestEpoch === sessionEpoch.current && isAttemptSummary(summaryData)) setSummary(summaryData);
         }
         if (historyResponse.ok) {
           const historyData: unknown = await historyResponse.json().catch(() => null);
-          if (isAttemptHistory(historyData)) setAttemptHistory(historyData.attempts);
+          if (requestEpoch === sessionEpoch.current && isAttemptHistory(historyData)) setAttemptHistory(historyData.attempts);
         }
       } catch {
         // Keep the last known summary if analytics are temporarily unavailable.
@@ -592,7 +604,7 @@ export default function App() {
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
     } finally {
-      setAnswerLoading(false);
+      if (requestEpoch === sessionEpoch.current) setAnswerLoading(false);
     }
   };
 
@@ -605,6 +617,8 @@ export default function App() {
       setHint(cachedHint);
       return;
     }
+    const requestEpoch = sessionEpoch.current;
+    const requestId = ++hintRequestId.current;
     setHintLoading(true);
     setQuestionError("");
     try {
@@ -620,12 +634,13 @@ export default function App() {
         throw new Error("Hint API returned an invalid payload.");
       }
       const resolvedHint = data.hint;
+      if (requestEpoch !== sessionEpoch.current || requestId !== hintRequestId.current || activeQuestionIdRef.current !== question.id) return;
       hintCache.current.set(cacheKey, resolvedHint);
       setHint(resolvedHint);
     } catch (error) {
       setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
     } finally {
-      setHintLoading(false);
+      if (requestEpoch === sessionEpoch.current && requestId === hintRequestId.current) setHintLoading(false);
     }
   };
 
