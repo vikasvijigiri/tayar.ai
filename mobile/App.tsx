@@ -602,7 +602,9 @@ export default function App() {
         // Keep the last known summary if analytics are temporarily unavailable.
       }
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+      if (requestEpoch === sessionEpoch.current && activeQuestionIdRef.current === question.id) {
+        setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+      }
     } finally {
       if (requestEpoch === sessionEpoch.current) setAnswerLoading(false);
     }
@@ -638,7 +640,9 @@ export default function App() {
       hintCache.current.set(cacheKey, resolvedHint);
       setHint(resolvedHint);
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+      if (requestEpoch === sessionEpoch.current && requestId === hintRequestId.current && activeQuestionIdRef.current === question.id) {
+        setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+      }
     } finally {
       if (requestEpoch === sessionEpoch.current && requestId === hintRequestId.current) setHintLoading(false);
     }
@@ -679,7 +683,7 @@ export default function App() {
         setQuestionError("You've reached the end of the currently published verified questions.");
       }
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
+      if (requestEpoch === sessionEpoch.current) setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
     } finally {
       if (requestEpoch === sessionEpoch.current) setQuestionLoading(false);
     }
