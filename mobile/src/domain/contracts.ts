@@ -80,7 +80,7 @@ export function isQuestion(value: unknown): value is Question {
     && Array.isArray(value.options) && value.options.length === 4
     && value.options.every(isQuestionOption)
     && typeof value.source_document === "string" && value.source_document.trim().length > 0
-    && ((typeof value.source_page === "string" && value.source_page.trim().length > 0) || (typeof value.source_page === "number" && Number.isSafeInteger(value.source_page) && value.source_page > 0))
+    && ((typeof value.source_page === "string" && value.source_page.trim().length > 0) || (typeof value.source_page === "number" && Number.isSafeInteger(value.source_page) && value.source_page >= 0))
     && !( "answer_key" in value );
 }
 
@@ -135,7 +135,7 @@ export function isAttemptHistory(value: unknown): value is { attempts: AttemptHi
       && (item.elapsed_ms === null || isFiniteNonNegative(item.elapsed_ms))
       && (item.created_at === null || typeof item.created_at === "string")
       && (item.source_document === null || typeof item.source_document === "string")
-      && (item.source_page === null || typeof item.source_page === "string" || typeof item.source_page === "number" && Number.isSafeInteger(item.source_page) && item.source_page > 0)
+      && (item.source_page === null || typeof item.source_page === "string" || typeof item.source_page === "number" && Number.isSafeInteger(item.source_page) && item.source_page >= 0)
       && !( "answer_key" in item ));
 }
 
