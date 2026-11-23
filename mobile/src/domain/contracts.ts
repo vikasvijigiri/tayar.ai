@@ -7,7 +7,7 @@ export type Question = {
   question_text: string;
   options: QuestionOption[];
   source_document: string;
-  source_page: string;
+  source_page: string | number;
   difficulty?: number | null;
 };
 export type QuestionPage = {
@@ -23,7 +23,7 @@ export type AnswerFeedback = {
   answer_key: string;
   solution_steps: string[];
   source_document: string;
-  source_page?: string | null;
+  source_page?: string | number | null;
 };
 export type TopicPerformance = {
   slug: string;
@@ -52,7 +52,7 @@ export type AttemptHistoryItem = {
   elapsed_ms: number | null;
   created_at: string | null;
   source_document: string | null;
-  source_page: string | null;
+  source_page: string | number | null;
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,13 +80,13 @@ export function isQuestion(value: unknown): value is Question {
     && Array.isArray(value.options) && value.options.length === 4
     && value.options.every(isQuestionOption)
     && typeof value.source_document === "string" && value.source_document.trim().length > 0
-    && typeof value.source_page === "string" && value.source_page.trim().length > 0
+    && ((typeof value.source_page === "string" && value.source_page.trim().length > 0) || (typeof value.source_page === "number" && Number.isSafeInteger(value.source_page) && value.source_page > 0))
     && !( "answer_key" in value );
 }
 
 export function isQuestionPage(value: unknown): value is QuestionPage {
   if (!isRecord(value) || value.exam_id !== "rrb_ntpc" || !Array.isArray(value.questions)
-    || value.questions.length === 0 || !value.questions.every(isQuestion)
+    || !value.questions.every(isQuestion)
     || !Number.isInteger(value.total_count) || Number(value.total_count) < value.questions.length
     || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(value.strategy))) return false;
   return value.focus_topic === null || isRecord(value.focus_topic)
@@ -135,7 +135,7 @@ export function isAttemptHistory(value: unknown): value is { attempts: AttemptHi
       && (item.elapsed_ms === null || isFiniteNonNegative(item.elapsed_ms))
       && (item.created_at === null || typeof item.created_at === "string")
       && (item.source_document === null || typeof item.source_document === "string")
-      && (item.source_page === null || typeof item.source_page === "string")
+      && (item.source_page === null || typeof item.source_page === "string" || typeof item.source_page === "number" && Number.isSafeInteger(item.source_page) && item.source_page > 0)
       && !( "answer_key" in item ));
 }
 
@@ -147,5 +147,5 @@ export function isAnswerFeedback(value: unknown): value is AnswerFeedback {
     && Array.isArray(value.solution_steps)
     && value.solution_steps.every((step) => typeof step === "string")
     && typeof value.source_document === "string" && value.source_document.trim().length > 0
-    && (value.source_page === undefined || value.source_page === null || typeof value.source_page === "string");
+    && (value.source_page === undefined || value.source_page === null || typeof value.source_page === "string" || typeof value.source_page === "number" && Number.isSafeInteger(value.source_page) && value.source_page > 0);
 }
