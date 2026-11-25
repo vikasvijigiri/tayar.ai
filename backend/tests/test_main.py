@@ -1095,19 +1095,49 @@ def test_attempt_history_is_paginated_and_does_not_expose_answer_key(monkeypatch
     assert captured_params["limit"] == "5" and captured_params["offset"] == "10"
 
 
-def test_hint_lock_registry_is_bounded_and_preserves_locked_entries():
+def test_hint_lock_registry_is_strictly_bounded_and_preserves_locked_entries():
     main._hint_locks.clear()
-    locked = main._get_hint_lock("locked-key")
 
-    async def hold_lock():
-        async with locked:
-            for index in range(main.HINT_LOCK_MAX_ENTRIES + 10):
-                main._get_hint_lock(f"key-{index}")
-            assert main._hint_locks.get("locked-key") is locked
+    async def exercise():
+        locks = [main._get_hint_lock(f"locked-{index}") for index in range(main.HINT_LOCK_MAX_ENTRIES)]
+        assert all(lock is not None for lock in locks)
+        for lock in locks:
+            await lock.acquire()
+        try:
+            assert len(main._hint_locks) == main.HINT_LOCK_MAX_ENTRIES
+            assert main._get_hint_lock("overflow") is None
+        finally:
+            for lock in locks:
+                lock.release()
 
-    asyncio.run(hold_lock())
-    assert len(main._hint_locks) <= main.HINT_LOCK_MAX_ENTRIES + 1
+    asyncio.run(exercise())
+    assert len(main._hint_locks) <= main.HINT_LOCK_MAX_ENTRIES
     main._hint_locks.clear()
+
+
+def test_hint_request_registry_is_strictly_bounded():
+    main._hint_requests.clear()
+    for index in range(main.HINT_RATE_LIMIT_MAX_USERS + 25):
+        assert main._consume_hint_request(f"user-{index}") is None
+    assert len(main._hint_requests) == main.HINT_RATE_LIMIT_MAX_USERS
+    assert "user-0" not in main._hint_requests
+    assert f"user-{main.HINT_RATE_LIMIT_MAX_USERS + 24}" in main._hint_requests
+    main._hint_requests.clear()
+
+
+def test_api_security_headers_and_dynamic_no_store_policy():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+    secure_response = TestClient(main.app, base_url="https://testserver").get("/health")
+    assert secure_response.headers["Strict-Transport-Security"].startswith("max-age=31536000")
+
+    config_response = client.get("/v1/config")
+    assert config_response.headers["Cache-Control"].startswith("public, max-age=300")
 
 
 def test_answer_rejects_idempotency_key_reuse_for_different_question(monkeypatch):
