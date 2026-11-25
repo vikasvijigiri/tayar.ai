@@ -106,7 +106,9 @@ jobs:
           TEST_OTP: ${{ secrets.TEST_OTP }}
         with:
           api-level: 35
-          target: google_apis
+          # These smoke flows do not use Play Services; the lean AOSP image avoids GMS startup contention.
+          target: default
+          disable-linux-hw-accel: false
           arch: x86_64
           profile: pixel_2
           disable-animations: false
