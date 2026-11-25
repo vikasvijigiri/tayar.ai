@@ -25,7 +25,7 @@ Endpoints:
 - `GET /health` — process health
 - `GET /v1/config` — supported exam and adaptive metrics
 - `GET /metrics` — Prometheus request count and latency metrics
-- `POST /v1/auth/signup`, `POST /v1/auth/signin`, `POST /v1/auth/refresh` — Supabase email authentication/session endpoints
+- `POST /v1/auth/refresh` — server-side Supabase session refresh/rotation. The Android app uses Supabase SMS OTP and Google OAuth with PKCE; access/refresh tokens and the OAuth verifier are stored through Expo SecureStore.
 - `GET /v1/questions` — active, source-verified questions only; excludes answer keys
 - `POST /v1/questions/{question_id}/answer` — authenticates the user, grades server-side against the stored answer key, and persists the attempt under RLS
 - `GET /v1/attempts/summary` — authenticated accuracy, recent accuracy and average response-time metrics
@@ -67,6 +67,29 @@ Render uses `render.yaml`. Configure the environment variables in the Render das
 
 Never commit API keys. Never place a Supabase service-role key or AI key in the mobile app. Run `backend/supabase/schema.sql`, then `backend/supabase/seed_verified_math.sql`, and finally `backend/supabase/seed_assertions.sql` in Supabase SQL Editor to publish and validate 50 source-verified questions across twelve topics. The incremental `seed_verified_math_expansion.sql` adds the first 24-question expansion to an existing 14-question installation; `seed_verified_math_expansion_12.sql` adds twelve more questions and seven topics to an existing 38-question installation. Attempt writes use the signed-in user's access token and database RLS. The service-role key is used only server-side for verified-question reads and answer-key lookup; grading is server-side and question-list responses exclude answer keys.
 
+## Cloud development (GitHub Codespaces)
+
+Tayar.ai includes a browser-based development container. No local Node.js, Python, Java, Android Studio or SDK installation is required.
+
+1. Open [Create Tayar.ai Codespace](https://codespaces.new/vikasvijigiri/tayar.ai?ref=qa/mobile-maestro-cloud).
+2. Choose the **2-core** machine to stay within the personal GitHub Free allowance.
+3. Wait for the post-create setup to install the locked mobile dependencies and backend development requirements.
+4. Start the API from the repository root:
+   `cd backend && ../backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`.
+5. In a second terminal, run `cd mobile && npm run typecheck && npm test`. Android device UI tests run in GitHub Actions because Codespaces does not support Android emulators or USB-connected phones.
+
+Codespaces forwards API port 8000 and Expo Metro port 8081. Add development credentials only through GitHub Codespaces Secrets or the Codespaces environment; never put real credentials in repository files. Use a dedicated non-production Supabase project and test accounts.
+
+**Important device-testing boundary:** Android emulators and USB-connected phones are not supported inside Codespaces. The committed GitHub Actions workflow runs Maestro against a hosted Android emulator. The physical-device workflow requires a separate self-hosted runner and is optional. Maestro MCP requires a reachable device; it is not configured as a misleading no-device MCP inside Codespaces. ChatGPT can continue making repository changes through the connected GitHub integration.
+
+For a strict no-spend setup, keep Codespaces spending disabled or set the Codespaces budget to **$0**. GitHub Free personal accounts currently include 120 core-hours and 15 GB-month storage; a 2-core Codespace consumes two core-hours per active hour. Stop the Codespace when finished. See [GitHub Codespaces included usage](https://docs.github.com/en/codespaces/troubleshooting/troubleshooting-included-usage).
+
+## Mobile QA
+
+The mobile QA architecture is documented in [mobile/QA.md](mobile/QA.md). Maestro YAML flows live in [.maestro/](.maestro/). The Mobile E2E workflow builds a debug APK and runs Maestro smoke and input-validation flows on a GitHub-hosted Pixel 7 Pro / Android 15 emulator. A separate manual-only workflow runs the same smoke flows on a physical Android handset attached to a private self-hosted runner labelled self-hosted, linux and android-device. Authenticated navigation additionally requires TEST_PHONE and TEST_OTP secrets backed by a dedicated non-production Supabase test project.
+
+The checked-in UI flows cover app launch, malformed-phone validation and authenticated navigation. They do not replace backend tests for grading, RLS, idempotency, token refresh or AI provider failure handling. See mobile/QA.md for the full scenario matrix and known gaps.
+
 ## CI/CD
 Pushes and pull requests run backend tests, Ruff linting, coverage reporting, dependency audits, mobile type checking/smoke tests, and Android builds. The Android workflow uses the committed npm lockfile (`npm ci`), caches Gradle dependencies, verifies the APK package ID/signature/SHA-256, and fails if the APK exceeds 100 MiB. Artifacts are available under Actions → workflow run → Artifacts for seven days. No public release is created automatically.
 
@@ -78,3 +101,8 @@ For a persistent production APK signature, create and back up a release keystore
 - Prometheus/Grafana configuration is committed, but hosted dashboards are not provisioned by these files alone.
 - A passing build or unit test does not mean the app is production-ready. Verify live service configuration and test on real Android devices before publishing.
 - Free-tier quotas, cold starts and usage limits may affect availability.
+
+
+## Production readiness
+
+The engineering release gates, current evidence and outstanding production blockers are tracked in [docs/engineering/production-readiness.md](docs/engineering/production-readiness.md). A passing build or isolated CI job is not a production-readiness approval.
