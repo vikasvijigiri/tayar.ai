@@ -14,7 +14,7 @@
 
 ## Start the cloud development environment
 
-1. Open [Tayar.ai Codespaces on the QA branch](https://codespaces.new/vikasvijigiri/tayar.ai?ref=qa/mobile-maestro-cloud).
+1. Open [Tayar.ai Codespaces](https://codespaces.new/vikasvijigiri/tayar.ai?ref=main).
 2. Select the 2-core machine.
 3. Wait for `.devcontainer/post-create.sh` to install the backend development requirements and locked mobile dependencies.
 4. Start the API from the repository root:
