@@ -78,11 +78,11 @@ Manos MCP is intentionally optional. If later needed in a Linux environment with
 The Mobile E2E workflow:
 
 - Builds an x86_64 release APK with the JavaScript bundle embedded, so Maestro can launch the app without a separate Metro server.
-- Starts a Pixel 7 Pro / Android 15 emulator using `reactivecircus/android-emulator-runner`.
+- Starts a Pixel 2 / Android 15 (API 35) x86_64 AOSP emulator with KVM hardware acceleration using `reactivecircus/android-emulator-runner`.
 - Installs Maestro CLI.
-- Runs the smoke and malformed-phone validation flows.
+- Runs the smoke and malformed-phone validation flows; the validation flow dismisses the keyboard before checking the visible error.
 - Runs authenticated navigation only when both test secrets are configured.
-- Uploads JUnit results, filtered Android logs and a final screenshot.
+- Runs a checked-in Bash harness that waits for Android framework readiness, then uploads JUnit results, filtered Android logs and a final screenshot. Keeping the multi-line control flow in a repository script avoids shell truncation in the emulator action's single-command script input.
 
 Default smoke and validation tests do not need paid Maestro Cloud or any credentials. The emulator is ephemeral and runs only during the GitHub Actions job.
 
