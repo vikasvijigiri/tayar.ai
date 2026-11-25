@@ -163,8 +163,10 @@ async def observe_requests(request: Request, call_next):
     # must never be stored by shared proxies or intermediary caches.
     if route == "/v1/config":
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
+    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
+        response.headers["Cache-Control"] = "private, no-store"
     else:
-        # Never let shared caches retain auth, health, metrics or user-specific API responses.
+        # Never let shared caches retain health, metrics or other non-public API responses.
         response.headers["Cache-Control"] = "no-store"
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
