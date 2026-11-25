@@ -65,6 +65,23 @@ HINT_RATE_WINDOW_SECONDS = 60
 _hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
 _hint_requests: dict[str, deque[float]] = defaultdict(deque)
 HINT_LOCK_MAX_ENTRIES = 512
+AI_PROVIDER_MAX_CONCURRENCY = 8
+AI_PROVIDER_QUEUE_TIMEOUT_SECONDS = 2.0
+_ai_provider_semaphore = asyncio.Semaphore(AI_PROVIDER_MAX_CONCURRENCY)
+
+
+async def _acquire_ai_provider_slot() -> bool:
+    """Bound upstream AI concurrency and fail fast when the queue is saturated."""
+    try:
+        await asyncio.wait_for(
+            _ai_provider_semaphore.acquire(),
+            timeout=AI_PROVIDER_QUEUE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        return False
+    return True
+
+
 _hint_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
 
 
@@ -555,6 +572,12 @@ async def get_hint(payload: HintIn, request: Request):
         for provider in order:
             if provider not in PROVIDERS or not os.getenv(PROVIDERS[provider][0]):
                 continue
+            if not await _acquire_ai_provider_slot():
+                raise HTTPException(
+                    status_code=503,
+                    detail="AI hint service is busy. Try again shortly.",
+                    headers={"Retry-After": "5"},
+                )
             try:
                 result = {
                     "provider": provider,
@@ -564,6 +587,8 @@ async def get_hint(payload: HintIn, request: Request):
                 return result
             except (httpx.HTTPError, KeyError, RuntimeError, ValueError) as exc:
                 errors.append(f"{provider}: {type(exc).__name__}")
+            finally:
+                _ai_provider_semaphore.release()
         if errors:
             raise HTTPException(
                 status_code=503,
