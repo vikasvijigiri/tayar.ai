@@ -1,0 +1,10 @@
+flows:
+  - smoke.yaml
+  - auth-validation.yaml
+  - authenticated-navigation.yaml
+executionOrder:
+  continueOnFailure: false
+testOutputDir: qa-artifacts/maestro
+platform:
+  android:
+    disableAnimations: true
