@@ -71,7 +71,7 @@ Never commit API keys. Never place a Supabase service-role key or AI key in the 
 
 Tayar.ai includes a browser-based development container. No local Node.js, Python, Java, Android Studio or SDK installation is required.
 
-1. Open [Create Tayar.ai Codespace](https://codespaces.new/vikasvijigiri/tayar.ai?ref=qa/mobile-maestro-cloud).
+1. Open [Create Tayar.ai Codespace](https://codespaces.new/vikasvijigiri/tayar.ai?ref=main).
 2. Choose the **2-core** machine to stay within the personal GitHub Free allowance.
 3. Wait for the post-create setup to install the locked mobile dependencies and backend development requirements.
 4. Start the API from the repository root:
