@@ -1,5 +1,6 @@
 const fs = require('fs');
 const app = fs.readFileSync('App.tsx', 'utf8');
+const contracts = fs.readFileSync('src/domain/contracts.ts', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const appComponent = app.slice(0, app.indexOf('\nfunction Metric('));
 const sessionGateIndex = appComponent.indexOf('  if (sessionLoading) {');
@@ -49,8 +50,8 @@ if (app.includes("you@example.com") || app.includes("EMAIL") || app.includes("PA
 if (!app.includes("tayar_oauth_verifier")) throw new Error("OAuth verifier must be stored securely");
 if (!app.includes("Persist the entire logical request locally") || !app.includes("submission.elapsed_ms") || !app.includes("submission.answer_given")) throw new Error("Retries must preserve the exact original answer payload");
 if (!app.includes('answerRequestKeys.current.has(questions[questionIndex].id) ? "Retry same answer" : "Submit answer"')) throw new Error("Ambiguous answer submissions must offer safe same-answer retries");
-if (!app.includes("function isQuestion") || !app.includes("function isAttemptSummary") || !app.includes("function isAttemptHistory")) throw new Error("Runtime API contract validators are missing");
-if (!app.includes("function isQuestionPage") || !app.includes('value.exam_id === "rrb_ntpc"')) throw new Error("Question and analytics pages must be validated against the selected exam");
+if (!contracts.includes("export function isQuestion") || !contracts.includes("export function isAttemptSummary") || !contracts.includes("export function isAttemptHistory")) throw new Error("Shared runtime API contract validators are missing");
+if (!contracts.includes("export function isQuestionPage") || !contracts.includes('value.exam_id === "rrb_ntpc"')) throw new Error("Question and analytics payloads must be validated against the selected exam");
 if (!app.includes("Retry same answer") || !app.includes("submission.idempotencyKey")) throw new Error("Answer retries must reuse a frozen idempotent submission");
 if (!app.includes("Question API returned an invalid payload") || !app.includes("Answer API returned an invalid grading or persistence confirmation")) throw new Error("Practice flow must validate semantic API payloads");
 if (!app.includes('body.includes("tayar_http_requests_total")') || !app.includes('body.includes("tayar_http_request_duration_seconds")')) throw new Error("Service checker must validate Prometheus response contents");
@@ -59,6 +60,10 @@ if (!app.includes("Clear account-scoped state before returning to the sign-in sc
 console.log("Phone OTP, Google PKCE and minimal login source checks passed");
 
 if (!app.includes("const authenticatedFetch") || !app.includes("refreshSession()")) throw new Error("Authenticated requests must refresh and retry expired sessions");
+const submitAnswerSource = app.slice(app.indexOf("const submitAnswer = async () => {"), app.indexOf("const requestHint = async () => {"));
+if (/response\.status === 401[\s\S]*await signOut\(\)/.test(submitAnswerSource)) throw new Error("Answer submission must not force logout after a transient refresh failure; authenticatedFetch owns session cleanup");
+if (!submitAnswerSource.includes("requestEpoch !== sessionEpoch.current") || !submitAnswerSource.includes("activeQuestionIdRef.current !== question.id")) throw new Error("Late answer responses must not update state after account or question changes");
+if (!app.includes("hintRequestId.current") || !app.includes("requestId !== hintRequestId.current")) throw new Error("Late AI hints must be discarded after question navigation or account changes");
 if (!app.includes("refreshInFlight.current")) throw new Error("Session refresh must be single-flight");
 if (!app.includes("sessionEpoch.current")) throw new Error("Logout must invalidate an in-flight refresh");
 if (!app.includes("const verifyOtp = async () => {\n    sessionEpoch.current += 1;") || !app.includes("const signInWithGoogle = async () => {\n    sessionEpoch.current += 1;")) throw new Error("New sign-in must invalidate stale in-flight refreshes");
@@ -77,12 +82,58 @@ if (!app.includes("SSC CGL") || !app.includes("SSC CHSL")) throw new Error("SSC 
 if (!app.includes("NIZAMABAD · TELANGANA")) throw new Error("Nizamabad offline classroom card is missing");
 console.log("Learner experience checks passed: four tabs, icons, transitions, animated metrics, beginner onboarding, RRB/SSC discovery and Nizamabad classroom");
 if (!app.includes("useWindowDimensions")) throw new Error("Layouts must respond to actual device viewport changes");
-if (!app.includes("viewportWidth < 360") || !app.includes("viewportWidth < 430")) throw new Error("Compact and standard phone breakpoints are missing");
+if (!app.includes("layout.compactBreakpoint") || !app.includes("layout.regularBreakpoint")) throw new Error("Compact and standard phone breakpoints must use shared design tokens");
 if (!app.includes("fontScale")) throw new Error("Bottom navigation must account for accessibility font scaling");
-if (!app.includes("maxWidth:contentMaxWidth") || !app.includes("maxWidth:520")) throw new Error("Content columns must be constrained on wide devices");
-if (!app.includes("minWidth:48") || !app.includes("minHeight:56")) throw new Error("Bottom navigation touch targets must remain accessible");
+if (!app.includes("layout.contentMaxWidth") || !app.includes("layout.comfortableReadingWidth")) throw new Error("Content columns must use shared width tokens");
+if (!app.includes("layout.minimumTouchTarget") || !app.includes("layout.minimumTabHeight")) throw new Error("Bottom navigation touch targets must use shared accessible-size tokens");
 console.log("Responsive layout checks passed: compact phones, font scale, constrained wide layouts and touch target sizing");
-const touchableCount = (app.match(/<TouchableOpacity\\b/g) || []).length;
-const buttonRoleCount = (app.match(/<TouchableOpacity[^>]*\\baccessibilityRole="button"/g) || []).length;
-if (touchableCount !== buttonRoleCount) throw new Error("Every interactive touch surface must expose button semantics to assistive technology");
-console.log("Accessibility checks passed: every touch surface exposes button semantics");
+const touchableTags = [...app.matchAll(/<TouchableOpacity\b[^>]*>/gs)].map(([tag]) => tag);
+if (touchableTags.length === 0) throw new Error("No interactive touch surfaces found; accessibility audit must not pass vacuously");
+const missingButtonRole = touchableTags.filter((tag) => !/\baccessibilityRole="button"/.test(tag));
+if (missingButtonRole.length > 0) {
+  throw new Error("Found " + missingButtonRole.length + " TouchableOpacity elements without accessibilityRole=button out of " + touchableTags.length);
+}
+console.log("Accessibility checks passed: " + touchableTags.length + " touch surfaces expose button semantics");
+
+if (!app.includes('from "./src/theme/tokens"')) throw new Error("App must consume the shared design token module");
+const theme = fs.readFileSync('src/theme/tokens.ts', 'utf8');
+for (const token of ['background', 'surfaceRaised', 'textPrimary', 'accentPrimary', 'spacing', 'radii', 'typography', 'layout', 'motion']) {
+  if (!theme.includes(token)) throw new Error("Missing shared design token group or semantic token: " + token);
+}
+console.log("Design system checks passed: centralized semantic colors, spacing, radii, type, layout and motion tokens");
+
+if (!app.includes('from "./src/components/PageHeader"')) throw new Error("Learner screens must use the shared page header");
+if ((app.match(/<PageHeader\b/g) || []).length !== 7) throw new Error("All seven learner screen headings must use the shared page header");
+const pageHeader = fs.readFileSync('src/components/PageHeader.tsx', 'utf8');
+if (!pageHeader.includes('accessibilityRole="header"') || !pageHeader.includes('titleCompact') || !pageHeader.includes("leadingContent?: ReactNode") || !pageHeader.includes("{leadingContent}")) throw new Error("Page headers must expose heading semantics, compact-phone typography and optional leading content");
+console.log("Shared UI checks passed: seven screen headers use accessible responsive typography");
+
+if ((app.match(/<SurfaceCard\b/g) || []).length !== 11 || (app.match(/<\/SurfaceCard>/g) || []).length !== 11) throw new Error("All eleven shared content cards must use SurfaceCard with balanced wrappers");
+if (!app.includes('from "./src/components/SurfaceCard"')) throw new Error("App must consume the shared SurfaceCard component");
+const surfaceCard = fs.readFileSync('src/components/SurfaceCard.tsx', 'utf8');
+if (!surfaceCard.includes('colors.surface') || !surfaceCard.includes('radii.lg') || !surfaceCard.includes('spacing.lg')) throw new Error("SurfaceCard must use shared design tokens");
+console.log("Shared surface checks passed: eleven content cards use the tokenized SurfaceCard");
+
+if ((app.match(/<ActionButton\b/g) || []).length !== 8) throw new Error("Static learner actions must use the shared ActionButton");
+if (!app.includes('from "./src/components/ActionButton"')) throw new Error("App must consume the shared ActionButton");
+const actionButton = fs.readFileSync('src/components/ActionButton.tsx', 'utf8');
+if (!actionButton.includes('accessibilityRole="button"') || !actionButton.includes('accessibilityLabel={accessibilityLabel || label}') || !actionButton.includes('accessibilityState')) throw new Error("ActionButton must expose accessible name and state");
+console.log("Shared action checks passed: eight learner actions use accessible button variants");
+
+if (!app.includes('from "./src/components/FormField"')) throw new Error("Auth forms must use the shared FormField component");
+if ((app.match(/<FormField\b/g) || []).length !== 2) throw new Error("Phone and OTP forms must use the shared FormField component");
+if (app.includes('<TextInput value={phone}') || app.includes('<TextInput value={otp}')) throw new Error("Auth screens must not bypass the shared field primitive");
+const formField = fs.readFileSync('src/components/FormField.tsx', 'utf8');
+for (const requirement of ['accessibilityLabel', 'accessibilityHint', 'keyboardType', 'textContentType', 'selectionColor', 'cursorColor', 'minHeight: 56', 'colors.surfaceRaised']) {
+  if (!formField.includes(requirement)) throw new Error("FormField missing accessibility, platform or design requirement: " + requirement);
+}
+console.log("Shared form checks passed: phone and OTP fields use accessible, tokenized native inputs");
+
+if (!app.includes('from "./src/components/ScreenContainer"')) throw new Error("App screens must use the shared ScreenContainer");
+if ((app.match(/<ScreenContainer\b/g) || []).length !== 2 || (app.match(/<\/ScreenContainer>/g) || []).length !== 2) throw new Error("Auth and learner views must use balanced shared ScreenContainer wrappers");
+if (/<ScrollView\b/.test(app)) throw new Error("Screens must not bypass the shared scrolling container");
+const screenContainer = fs.readFileSync('src/components/ScreenContainer.tsx', 'utf8');
+for (const requirement of ['keyboardShouldPersistTaps', 'keyboardDismissMode="on-drag"', 'showsVerticalScrollIndicator', 'overScrollMode="never"', 'colors.background']) {
+  if (!screenContainer.includes(requirement)) throw new Error("ScreenContainer missing keyboard, scroll or theme behavior: " + requirement);
+}
+console.log("Shared screen layout checks passed: auth and learner views use the keyboard-safe scrolling shell");
