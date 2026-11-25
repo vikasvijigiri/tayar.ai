@@ -7,4 +7,5 @@ tags:
 - tapOn: "Phone number with country code"
 - inputText: "12345"
 - tapOn: "^Continue$"
-- assertVisible: ".*Enter phone with country code.*"
+- hideKeyboard
+- assertVisible: "Enter phone with country code, e.g. +91…"
