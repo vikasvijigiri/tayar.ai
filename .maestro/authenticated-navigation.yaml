@@ -1,0 +1,27 @@
+appId: ai.tayar.adaptive
+tags:
+  - authenticated
+---
+- launchApp:
+    clearState: true
+- tapOn: "Phone number with country code"
+- inputText: "${TEST_PHONE}"
+- tapOn: "^Continue$"
+- assertVisible: "SMS verification code"
+- tapOn: "SMS verification code"
+- inputText: "${TEST_OTP}"
+- tapOn: "^Verify$"
+- assertVisible: "One step closer"
+- tapOn: "^Learn$"
+- assertVisible: "Learn at your pace."
+- tapOn: "^Practice$"
+- assertVisible: "Practice with purpose."
+- assertVisible: "SOURCE-VERIFIED CONTENT"
+- tapOn: "^Progress$"
+- assertVisible: "Look how far"
+- tapOn: "^Today$"
+- tapOn: "Open profile and settings"
+- assertVisible: "Learning services."
+- assertVisible: "Test all public endpoints"
+- tapOn: "Sign out securely"
+- assertVisible: "Continue with Google"

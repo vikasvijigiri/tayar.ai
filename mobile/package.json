@@ -6,7 +6,7 @@
   "scripts": {
     "start": "expo start",
     "typecheck": "tsc --noEmit",
-    "test": "node ./scripts/smoke-test.cjs"
+    "test": "node ./scripts/smoke-test.cjs && node ./scripts/contracts-test.cjs"
   },
   "dependencies": {
     "expo": "~54.0.38",

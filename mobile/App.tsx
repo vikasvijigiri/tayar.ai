@@ -5,11 +5,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -18,6 +16,12 @@ import * as SecureStore from "expo-secure-store";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
+import { C, layout } from "./src/theme/tokens";
+import { PageHeader } from "./src/components/PageHeader";
+import { SurfaceCard } from "./src/components/SurfaceCard";
+import { ActionButton } from "./src/components/ActionButton";
+import { FormField } from "./src/components/FormField";
+import { ScreenContainer } from "./src/components/ScreenContainer";
 
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://tayar-ai-api.onrender.com").replace(/\/+$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -40,97 +44,30 @@ async function apiFetch(
 function createIdempotencyKey(): string {
   return Crypto.randomUUID();
 }
-const C = {
-  bg: "#0A1020", panel: "#121C30", panel2: "#17243B", text: "#F4F7FC",
-  muted: "#9AAAC3", teal: "#53E0C1", blue: "#85A9FF", amber: "#FFC76A",
-  border: "#263650", red: "#FF7D86",
-};
 
 type ApiStatus = "checking" | "online" | "offline";
 type AppScreen = "Today" | "Learn" | "Practice" | "Progress" | "Revision" | "Services";
 type ServiceCheck = { status: "checking" | "online" | "attention"; detail: string };
-type QuestionOption = string | { key?: string; label?: string; text?: string; value?: string };
-type Question = { id: string; exam_id: "rrb_ntpc"; question_text: string; options: QuestionOption[]; source_document: string; source_page?: string | null; difficulty?: number | null };
-type QuestionPage = { exam_id: "rrb_ntpc"; questions: Question[]; total_count: number; strategy: "baseline" | "mixed_baseline" | "weak_topic_focus"; focus_topic: { slug: string; topic: string; attempts: number; accuracy_pct: number } | null };
-type AnswerFeedback = { saved: true; is_correct: boolean; answer_key: string; solution_steps: string[]; source_document?: string; source_page?: string | null };
-type TopicPerformance = { slug: string; topic: string; attempts: number; accuracy_pct: number; average_time_seconds: number };
-type AttemptSummary = { exam_id: "rrb_ntpc"; total_attempts: number; overall_accuracy_pct: number | null; last_5_accuracy_pct: number | null; average_time_seconds: number | null; repeat_accuracy_pct: number | null; recent_attempts: number; weakest_topic: TopicPerformance | null; topic_performance: TopicPerformance[] };
-type AttemptHistoryItem = { question_id: string; question_text: string; topic: string; is_correct: boolean; answer_given: string | null; elapsed_ms: number | null; created_at: string | null; source_document: string | null; source_page: string | null };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isQuestion(value: unknown): value is Question {
-  if (!isRecord(value)) return false;
-  const options = value.options;
-  return value.exam_id === "rrb_ntpc" && typeof value.id === "string" && value.id.length > 0
-    && typeof value.question_text === "string" && value.question_text.trim().length > 0
-    && Array.isArray(options) && options.length === 4
-    && options.every((option) => typeof option === "string" && option.trim().length > 0
-      || isRecord(option) && [option.label, option.text, option.value, option.key].some((part) => typeof part === "string" && part.trim().length > 0))
-    && typeof value.source_document === "string" && value.source_document.trim().length > 0
-    && typeof value.source_page === "string" && value.source_page.trim().length > 0
-    && !("answer_key" in value);
-}
-
-function isQuestionPage(value: unknown): value is QuestionPage {
-  if (!isRecord(value) || value.exam_id !== "rrb_ntpc" || !Array.isArray(value.questions)
-    || value.questions.length === 0 || !value.questions.every(isQuestion)
-    || !Number.isInteger(value.total_count) || Number(value.total_count) < value.questions.length
-    || !["baseline", "mixed_baseline", "weak_topic_focus"].includes(String(value.strategy))) return false;
-  return value.focus_topic === null || isRecord(value.focus_topic)
-    && typeof value.focus_topic.slug === "string" && typeof value.focus_topic.topic === "string"
-    && Number.isInteger(value.focus_topic.attempts) && Number(value.focus_topic.attempts) >= 0
-    && typeof value.focus_topic.accuracy_pct === "number"
-    && value.focus_topic.accuracy_pct >= 0 && value.focus_topic.accuracy_pct <= 100;
-}
-
-function isTopicPerformance(value: unknown): value is TopicPerformance {
-  return isRecord(value) && typeof value.slug === "string" && typeof value.topic === "string"
-    && Number.isInteger(value.attempts) && Number(value.attempts) >= 0
-    && typeof value.accuracy_pct === "number" && value.accuracy_pct >= 0 && value.accuracy_pct <= 100
-    && typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0;
-}
-
-function isAttemptSummary(value: unknown): value is AttemptSummary {
-  if (!isRecord(value)) return false;
-  const validPercent = (part: unknown) => part === null || typeof part === "number" && part >= 0 && part <= 100;
-  return value.exam_id === "rrb_ntpc" && Number.isInteger(value.total_attempts) && Number(value.total_attempts) >= 0
-    && validPercent(value.overall_accuracy_pct) && validPercent(value.last_5_accuracy_pct)
-    && validPercent(value.repeat_accuracy_pct)
-    && (value.average_time_seconds === null || typeof value.average_time_seconds === "number" && value.average_time_seconds >= 0)
-    && Number.isInteger(value.recent_attempts) && Number(value.recent_attempts) >= 0
-    && (value.weakest_topic === null || isTopicPerformance(value.weakest_topic))
-    && Array.isArray(value.topic_performance) && value.topic_performance.every(isTopicPerformance);
-}
-
-function isAttemptHistory(value: unknown): value is { attempts: AttemptHistoryItem[] } {
-  return isRecord(value) && value.exam_id === "rrb_ntpc" && Array.isArray(value.attempts)
-    && Number.isInteger(value.limit) && Number.isInteger(value.offset)
-    && value.attempts.every((item) => isRecord(item)
-      && typeof item.question_id === "string" && typeof item.question_text === "string"
-      && typeof item.topic === "string" && typeof item.is_correct === "boolean"
-      && (item.answer_given === null || typeof item.answer_given === "string")
-      && (item.elapsed_ms === null || typeof item.elapsed_ms === "number" && item.elapsed_ms >= 0)
-      && (item.created_at === null || typeof item.created_at === "string")
-      && (item.source_document === null || typeof item.source_document === "string")
-      && (item.source_page === null || typeof item.source_page === "string")
-      && !("answer_key" in item));
-}
-
-function isAnswerFeedback(value: unknown): value is AnswerFeedback {
-  return isRecord(value) && value.saved === true && typeof value.is_correct === "boolean"
-    && typeof value.answer_key === "string" && value.answer_key.length > 0
-    && Array.isArray(value.solution_steps) && value.solution_steps.every((step) => typeof step === "string")
-    && typeof value.source_document === "string" && value.source_document.length > 0;
-}
+import {
+  isAnswerFeedback,
+  isAttemptHistory,
+  isAttemptSummary,
+  isQuestion,
+  isQuestionPage,
+  isRecord,
+  type AnswerFeedback,
+  type AttemptHistoryItem,
+  type AttemptSummary,
+  type Question,
+  type QuestionPage,
+  type TopicPerformance,
+} from "./src/domain/contracts";
 
 export default function App() {
   const { width: viewportWidth, fontScale } = useWindowDimensions();
-  const compactWidth = viewportWidth < 360;
-  const pageGutter = viewportWidth < 360 ? 16 : viewportWidth < 430 ? 20 : 24;
-  const contentMaxWidth = Math.min(viewportWidth, 760);
+  const compactWidth = viewportWidth < layout.compactBreakpoint;
+  const pageGutter = viewportWidth < 360 ? 16 : viewportWidth < layout.regularBreakpoint ? 20 : 24;
+  const contentMaxWidth = Math.min(viewportWidth, layout.contentMaxWidth);
   const [screen, setScreen] = useState<AppScreen>("Today");
   const screenMotion = useRef(new Animated.Value(1)).current;
   const [serviceChecks, setServiceChecks] = useState<Record<string, ServiceCheck>>({});
@@ -173,6 +110,9 @@ export default function App() {
   const answerRequestKeys = useRef<Map<string, { idempotencyKey: string; answer_given: string; elapsed_ms: number }>>(new Map());
   // Keep hint results for this app session to avoid repeated paid inference for the same question.
   const hintCache = useRef<Map<string, string>>(new Map());
+  const hintRequestId = useRef(0);
+  const activeQuestionIdRef = useRef<string | null>(null);
+  activeQuestionIdRef.current = questions[questionIndex]?.id ?? null;
 
   useEffect(() => {
     let active = true;
@@ -362,6 +302,10 @@ export default function App() {
     hintCache.current.clear();
     sessionDeadline.current = null;
     setRemainingSeconds(480);
+    hintRequestId.current += 1;
+    setAnswerLoading(false);
+    setHintLoading(false);
+    setQuestionLoading(false);
     setToken(null);
     setAuthError(cleanup.some((result) => result.status === "rejected"));
     setAuthMessage(cleanup.some((result) => result.status === "rejected")
@@ -543,9 +487,11 @@ export default function App() {
   }, [Boolean(token), questions.length]);
 
   useEffect(() => {
+    hintRequestId.current += 1;
     setSelectedAnswer("");
     setFeedback(null);
     setHint("");
+    setHintLoading(false);
     questionStartedAt.current = Date.now();
   }, [questionIndex]);
 
@@ -559,15 +505,15 @@ export default function App() {
       <SafeAreaView style={s.safe}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
         <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:520,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
+          <ScreenContainer contentContainerStyle={[s.authPage,{paddingHorizontal:pageGutter,width:"100%",maxWidth:layout.comfortableReadingWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
             <View style={s.minimalAuth}>
               <Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text>
-              <View style={s.card}>
+              <SurfaceCard>
                 {!otpSent ? <>
-                  <TextInput value={phone} onChangeText={setPhone} placeholder="+91 Phone number" placeholderTextColor="#71829D" keyboardType="phone-pad" autoCapitalize="none" autoCorrect={false} textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" style={s.input} editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
+                  <FormField value={phone} onChangeText={setPhone} placeholder="+91 Phone number" keyboardType="phone-pad" textContentType="telephoneNumber" accessibilityLabel="Phone number with country code" editable={!authLoading} onSubmitEditing={sendOtp} returnKeyType="next"/>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Continue</Text>}</TouchableOpacity>
                 </> : <>
-                  <TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" placeholderTextColor="#71829D" keyboardType="number-pad" autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" accessibilityLabel="SMS verification code" style={s.input} editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
+                  <FormField value={otp} onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0,10))} placeholder="SMS code" keyboardType="number-pad" textContentType="oneTimeCode" accessibilityLabel="SMS verification code" editable={!authLoading} onSubmitEditing={verifyOtp} returnKeyType="done"/>
                   <TouchableOpacity onPress={verifyOtp} disabled={authLoading} accessibilityRole="button" style={[s.primaryButton,authLoading&&s.dimmed]}>{authLoading ? <ActivityIndicator color={C.bg}/> : <Text style={s.primaryButtonText}>Verify</Text>}</TouchableOpacity>
                   <TouchableOpacity onPress={sendOtp} disabled={authLoading} style={s.modeSwitch} accessibilityRole="button"><Text style={s.modeText}>Resend code</Text></TouchableOpacity>
                   <TouchableOpacity accessibilityRole="button" onPress={() => {setOtpSent(false);setOtp("");setAuthMessage("");setAuthError(false);}} style={s.modeSwitch}><Text style={s.modeText}>Change number</Text></TouchableOpacity>
@@ -575,9 +521,9 @@ export default function App() {
                 <View style={s.authDivider}><View style={s.authDividerLine}/><Text style={s.authDividerText}>OR</Text><View style={s.authDividerLine}/></View>
                 <TouchableOpacity onPress={signInWithGoogle} disabled={authLoading} accessibilityRole="button" style={[s.googleButton,authLoading&&s.dimmed]}><Text style={s.googleButtonText}>Continue with Google</Text></TouchableOpacity>
                 {authMessage !== "" && <Text accessibilityRole="alert" style={[s.authMessage,{color:authError?C.red:C.teal}]}>{authMessage}</Text>}
-              </View>
+              </SurfaceCard>
             </View>
-          </ScrollView>
+          </ScreenContainer>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
@@ -590,6 +536,7 @@ export default function App() {
       setQuestionError("This 8-minute practice set has ended. Restart the set to continue.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setAnswerLoading(true);
     setQuestionError("");
     try {
@@ -622,13 +569,15 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         if (response.status === 401) {
-          await signOut();
-          throw new Error("Your session expired. Please sign in again.");
+          // authenticatedFetch owns refresh and permanent-session cleanup. Do not
+          // sign out here: a transient refresh failure must remain retryable.
+          throw new Error("Could not authorize this request. Please retry; if your session expired, sign in again.");
         }
         throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to submit this answer.");
       }
       if (!isAnswerFeedback(data)) throw new Error("Answer API returned an invalid grading or persistence confirmation.");
       answerRequestKeys.current.delete(question.id);
+      if (requestEpoch !== sessionEpoch.current || activeQuestionIdRef.current !== question.id) return;
       setFeedback(data);
       try {
         // Fetch independent analytics endpoints concurrently to reduce post-answer wait time.
@@ -640,21 +589,24 @@ export default function App() {
             headers: { Authorization: "Bearer " + token },
           }),
         ]);
+        if (requestEpoch !== sessionEpoch.current || activeQuestionIdRef.current !== question.id) return;
         if (summaryResponse.ok) {
           const summaryData: unknown = await summaryResponse.json().catch(() => null);
-          if (isAttemptSummary(summaryData)) setSummary(summaryData);
+          if (requestEpoch === sessionEpoch.current && isAttemptSummary(summaryData)) setSummary(summaryData);
         }
         if (historyResponse.ok) {
           const historyData: unknown = await historyResponse.json().catch(() => null);
-          if (isAttemptHistory(historyData)) setAttemptHistory(historyData.attempts);
+          if (requestEpoch === sessionEpoch.current && isAttemptHistory(historyData)) setAttemptHistory(historyData.attempts);
         }
       } catch {
         // Keep the last known summary if analytics are temporarily unavailable.
       }
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+      if (requestEpoch === sessionEpoch.current && activeQuestionIdRef.current === question.id) {
+        setQuestionError(error instanceof Error ? error.message : "Unable to submit this answer.");
+      }
     } finally {
-      setAnswerLoading(false);
+      if (requestEpoch === sessionEpoch.current) setAnswerLoading(false);
     }
   };
 
@@ -667,6 +619,8 @@ export default function App() {
       setHint(cachedHint);
       return;
     }
+    const requestEpoch = sessionEpoch.current;
+    const requestId = ++hintRequestId.current;
     setHintLoading(true);
     setQuestionError("");
     try {
@@ -682,12 +636,15 @@ export default function App() {
         throw new Error("Hint API returned an invalid payload.");
       }
       const resolvedHint = data.hint;
+      if (requestEpoch !== sessionEpoch.current || requestId !== hintRequestId.current || activeQuestionIdRef.current !== question.id) return;
       hintCache.current.set(cacheKey, resolvedHint);
       setHint(resolvedHint);
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+      if (requestEpoch === sessionEpoch.current && requestId === hintRequestId.current && activeQuestionIdRef.current === question.id) {
+        setQuestionError(error instanceof Error ? error.message : "Hint is temporarily unavailable.");
+      }
     } finally {
-      setHintLoading(false);
+      if (requestEpoch === sessionEpoch.current && requestId === hintRequestId.current) setHintLoading(false);
     }
   };
 
@@ -701,6 +658,7 @@ export default function App() {
       setQuestionError("You've reached the end of the currently published verified questions in this set.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setQuestionLoading(true);
     setQuestionError("");
     try {
@@ -712,6 +670,7 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to load more questions.");
       if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      if (requestEpoch !== sessionEpoch.current) return;
       const next = data.questions;
       setTotalQuestionCount(data.total_count);
       setQuestionStrategy(data.strategy);
@@ -724,9 +683,9 @@ export default function App() {
         setQuestionError("You've reached the end of the currently published verified questions.");
       }
     } catch (error) {
-      setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
+      if (requestEpoch === sessionEpoch.current) setQuestionError(error instanceof Error ? error.message : "Unable to load more questions.");
     } finally {
-      setQuestionLoading(false);
+      if (requestEpoch === sessionEpoch.current) setQuestionLoading(false);
     }
   };
 
@@ -742,6 +701,7 @@ export default function App() {
       setQuestionError("Confirm the pending answer using “Retry same answer” before starting another set.");
       return;
     }
+    const requestEpoch = sessionEpoch.current;
     setScreen("Practice"); setQuestionLoading(true); setQuestionError("");
     try {
       const nextOffset = totalQuestionCount > 0 ? (testOffset + currentTestSize) % totalQuestionCount : 0;
@@ -749,6 +709,7 @@ export default function App() {
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(isRecord(data) && typeof data.detail === "string" ? data.detail : "Unable to start a new test.");
       if (!isQuestionPage(data)) throw new Error("Question API returned an invalid payload or incomplete source attribution.");
+      if (requestEpoch !== sessionEpoch.current) return;
       const nextQuestions = data.questions;
       setQuestions(nextQuestions); setQuestionIndex(0);
       setTestOffset(nextOffset); setCurrentTestSize(nextQuestions.length);
@@ -757,8 +718,8 @@ export default function App() {
       if (nextQuestions.length === 0) throw new Error("No additional verified questions are available in this test cycle.");
       setSelectedAnswer(""); setFeedback(null); setHint(""); sessionDeadline.current = Date.now() + 480000;
       setRemainingSeconds(480); questionStartedAt.current = Date.now();
-    } catch (error) { setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
-    finally { setQuestionLoading(false); }
+    } catch (error) { if (requestEpoch === sessionEpoch.current) setQuestionError(error instanceof Error ? error.message : "Unable to start a new test."); }
+    finally { if (requestEpoch === sessionEpoch.current) setQuestionLoading(false); }
   };
 
   const checkService = async (key: string, path: string) => {
@@ -843,7 +804,7 @@ export default function App() {
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
       <Animated.View style={{flex:1,opacity:screenMotion,transform:[{translateY:screenMotion.interpolate({inputRange:[0.94,1],outputRange:[12,0]})}]}}>
-      <ScrollView style={s.contentScroll} contentContainerStyle={[s.page,{paddingHorizontal:pageGutter,width:"100%",maxWidth:contentMaxWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
+      <ScreenContainer style={s.contentScroll} contentContainerStyle={[s.page,{paddingHorizontal:pageGutter,width:"100%",maxWidth:contentMaxWidth,alignSelf:"center"}]} keyboardShouldPersistTaps="handled">
         <View style={s.top}>
           <View><Text style={s.brand}>TAYAR<Text style={{color:C.teal}}>.AI</Text></Text><Text style={s.kicker}>YOUR PERSONAL EXAM INTELLIGENCE</Text></View>
           <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Services")} accessibilityLabel="Open profile and settings" style={s.avatar}><Text style={{color:C.teal,fontWeight:"900",fontSize:17}}>V</Text></TouchableOpacity>
@@ -851,10 +812,9 @@ export default function App() {
         <ServiceStatus status={apiStatus}/>
         
         {screen === "Today" && <>
-        <Text style={s.eyebrow}>YOUR PREPARATION SPACE</Text>
-        <Text style={s.greeting}>{new Date().getHours()<12?"Good morning":new Date().getHours()<17?"Good afternoon":"Good evening"} 👋</Text>
-        <Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>One step closer{"\n"}to your goal.</Text>
-        <Text style={s.sub}>Your RRB & SSC preparation, made simpler.</Text>
+        
+        
+        <PageHeader eyebrow="YOUR PREPARATION SPACE" leadingContent={<Text style={s.greeting}>{new Date().getHours()<12?"Good morning":new Date().getHours()<17?"Good afternoon":"Good evening"} 👋</Text>} title={"One step closer\nto your goal."} description="Your RRB & SSC preparation, made simpler." compact={compactWidth} />
         <View style={s.momentumCard}><View style={s.momentumIcon}><Text style={s.momentumGlyph}>✦</Text></View><View style={s.momentumCopy}><Text style={s.momentumTitle}>Your journey starts here</Text><Text style={s.momentumText}>{summary && summary.total_attempts > 0 ? `You have completed ${summary.total_attempts} answers. Keep your momentum going.` : "No pressure to know everything. Start with one short practice set and we’ll guide your next step."}</Text></View></View>
         <View style={s.hero}><Text style={s.label}>PRACTICE BASELINE</Text><Text style={s.heroTitle}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded` : "Your first practice session starts the baseline"}</Text><View style={s.track}><View style={[s.fill,{width:percentWidth(summary ? Math.min(100, summary.total_attempts * 2) : 0)}]}/></View><Text style={s.small}>Progress indicator: completed answers, capped at 50 attempts. It is not an exam-readiness prediction.</Text></View>
         <Text style={s.section}>Your learning signals</Text>
@@ -873,21 +833,19 @@ export default function App() {
           <Shortcut title="Check services" detail="API, readiness and metrics" onPress={() => { setScreen("Services"); checkAllServices(); }}/>
         </View>
         <Text style={s.section}>Your next best action</Text>
-        <View style={s.card}>
+        <SurfaceCard>
           <Text style={s.cardTitle}>{summary?.weakest_topic ? `Review ${summary.weakest_topic.topic}` : summary && summary.total_attempts >= 10 ? "Broaden your topic coverage" : "Establish your baseline"}</Text>
           <Text style={s.body}>{summary?.weakest_topic ? `${summary.weakest_topic.topic} currently has your lowest tracked accuracy (${summary.weakest_topic.accuracy_pct}%). Review the solution steps, then revisit missed questions after a short gap.` : summary && summary.total_attempts >= 10 ? `You have logged ${summary.total_attempts} answers. Keep building accuracy and retention across the verified topic bank.` : "Complete a short timed diagnostic to establish your baseline. Practice uses source-verified questions only."}</Text>
-          <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start / restart test →</Text></TouchableOpacity>
-        </View>
+          <ActionButton label="Start / restart test →" onPress={startNewTest} variant="secondary" />
+        </SurfaceCard>
         </>}
         {screen === "Learn" && <>
-          <Text style={s.eyebrow}>YOUR LEARNING HUB</Text>
-          <Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Learn at your pace.</Text>
-          <Text style={s.sub}>Start from the basics. Build confidence one topic at a time.</Text>
+          <PageHeader eyebrow="YOUR LEARNING HUB" title="Learn at your pace." description="Start from the basics. Build confidence one topic at a time." compact={compactWidth} />
           <View style={s.learnHero}>
             <View style={s.learnBadge}><Text style={s.learnBadgeText}>START HERE</Text></View>
             <Text style={s.learnHeroTitle}>New to government exams?</Text>
             <Text style={s.learnHeroBody}>That’s okay. Begin with a short diagnostic, understand your strengths, then follow a simple study routine. You do not need to plan everything yourself.</Text>
-            <TouchableOpacity accessibilityRole="button" onPress={startNewTest} activeOpacity={0.82} style={s.primaryButton}><Text style={s.primaryButtonText}>Find my starting level  →</Text></TouchableOpacity>
+            <ActionButton label="Find my starting level  →" onPress={startNewTest} variant="primary" />
           </View>
           <Text style={s.section}>Choose your exam goal</Text>
           <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} activeOpacity={0.84} style={s.courseCard}>
@@ -897,22 +855,20 @@ export default function App() {
           <View style={[s.courseCard,s.courseMuted]}><View style={s.courseIconMuted}><Text style={s.courseGlyphMuted}>▦</Text></View><View style={s.courseCopy}><Text style={s.courseTitle}>SSC CGL</Text><Text style={s.courseDescription}>Structured learning path and practice modules are being prepared.</Text><Text style={s.comingSoon}>COMING SOON</Text></View></View>
           <View style={[s.courseCard,s.courseMuted]}><View style={s.courseIconMuted}><Text style={s.courseGlyphMuted}>▦</Text></View><View style={s.courseCopy}><Text style={s.courseTitle}>SSC CHSL</Text><Text style={s.courseDescription}>A beginner-friendly course path is planned for this exam.</Text><Text style={s.comingSoon}>COMING SOON</Text></View></View>
           <Text style={s.section}>Your learning routine</Text>
-          <View style={s.card}>
+          <SurfaceCard>
             {[
               {n:"01",title:"Learn one concept",detail:"Understand the method before memorising shortcuts."},
               {n:"02",title:"Try a few questions",detail:"Apply the concept with guided practice."},
               {n:"03",title:"Review every mistake",detail:"See why an answer is right and what to improve."},
               {n:"04",title:"Return and revise",detail:"Revisit difficult topics after a gap."},
             ].map((step,index)=><View key={step.n} style={s.learningStep}><View style={s.stepNumber}><Text style={s.stepNumberText}>{step.n}</Text></View><View style={s.stepCopy}><Text style={s.stepTitle}>{step.title}</Text><Text style={s.small}>{step.detail}</Text></View>{index<3&&<View style={s.stepConnector}/>}</View>)}
-          </View>
+          </SurfaceCard>
           <Text style={s.section}>Learn with us in Nizamabad</Text>
           <View style={s.classroomCard}><Text style={s.classroomEyebrow}>OFFLINE + ONLINE LEARNING</Text><Text style={s.classroomTitle}>A teacher beside you. A plan in your pocket.</Text><Text style={s.classroomBody}>Use the app for daily practice and progress. Join classroom learning for guided teaching, doubt clearing and personal support at our Nizamabad coaching centre.</Text><View style={s.classroomPill}><Text style={s.classroomPillText}>NIZAMABAD · TELANGANA</Text></View></View>
         </>}
         {screen === "Practice" && <>
-        <Text style={s.eyebrow}>RRB NTPC · QUANTITATIVE APTITUDE</Text>
-        <Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Practice with purpose.</Text>
-        <Text style={s.sub}>Timed sets · verified questions · worked solutions</Text>
-        <View style={s.card}>
+        <PageHeader eyebrow="RRB NTPC · QUANTITATIVE APTITUDE" title="Practice with purpose." description="Timed sets · verified questions · worked solutions" compact={compactWidth} />
+        <SurfaceCard>
           <Text style={s.tag}>SOURCE-VERIFIED CONTENT</Text>
           <Text style={s.small}>{questionStrategy === "weak_topic_focus" && focusTopic ? `Adaptive focus · ${focusTopic.topic} · ${focusTopic.accuracy_pct}% recent accuracy` : questionStrategy === "mixed_baseline" && focusTopic ? `Mixed set · ${focusTopic.topic} needs attention; the verified bank is still too small for a full focused set.` : "Mixed verified practice · question focus adapts as your attempt history grows."}</Text>
           {questions.length > 0 && <>
@@ -950,15 +906,15 @@ export default function App() {
             </>
           }
           {questionError!==""&&questions.length===0&&<Text style={[s.authMessage,{color:C.red}]}>{questionError}</Text>}
-          <TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Start a new test / restart set ↻</Text></TouchableOpacity>
+          <ActionButton label="Start a new test / restart set ↻" onPress={startNewTest} variant="secondary" />
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>View analytics →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Revision plan →</Text></TouchableOpacity></View>
-        </View>
+        </SurfaceCard>
         </>}
         {screen === "Progress" && <>
-          <Text style={s.eyebrow}>YOUR GROWTH</Text><Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Look how far{"\n"}you can go.</Text><Text style={s.sub}>Real progress from your saved practice. Every attempt counts.</Text><View style={s.progressWelcome}><Text style={s.progressWelcomeTitle}>{summary && summary.total_attempts > 0 ? "You are building consistency." : "Your progress story starts with one answer."}</Text><Text style={s.progressWelcomeText}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded so far. Keep learning from every attempt.` : "Complete a short practice set to unlock your personal performance insights."}</Text></View>
+          <PageHeader eyebrow="YOUR GROWTH" title={"Look how far\nyou can go."} description="Real progress from your saved practice. Every attempt counts." compact={compactWidth} /><View style={s.progressWelcome}><Text style={s.progressWelcomeTitle}>{summary && summary.total_attempts > 0 ? "You are building consistency." : "Your progress story starts with one answer."}</Text><Text style={s.progressWelcomeText}>{summary && summary.total_attempts > 0 ? `${summary.total_attempts} answers recorded so far. Keep learning from every attempt.` : "Complete a short practice set to unlock your personal performance insights."}</Text></View>
           <View style={s.grid}><Metric label="OVERALL ACCURACY" value={overallAccuracy} color={C.teal}/><Metric label="LAST 5 ATTEMPTS" value={lastFiveAccuracy} color={C.blue}/><Metric label="QUESTIONS ANSWERED" value={summary?String(summary.total_attempts):"0"} color={C.teal}/><Metric label="AVG. RESPONSE TIME" value={summary?.average_time_seconds==null?"—":String(summary.average_time_seconds)+"s"} color={C.blue}/><Metric label="REPEAT ACCURACY" value={summary?.repeat_accuracy_pct==null?"—":String(summary.repeat_accuracy_pct)+"%"} color={C.amber}/></View><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} activeOpacity={0.82} style={s.revisionBanner}><View style={s.revisionIcon}><Text style={s.revisionGlyph}>↻</Text></View><View style={{flex:1}}><Text style={s.revisionTitle}>Your revision plan</Text><Text style={s.revisionText}>{summary?.weakest_topic ? `Focus on ${summary.weakest_topic.topic} next.` : "Your weak topics will appear here as you practise."}</Text></View><Text style={s.revisionArrow}>›</Text></TouchableOpacity>
-          <View style={s.card}><Text style={s.cardTitle}>Topic performance</Text>{summary?.topic_performance?.length?summary.topic_performance.map(topic=><View key={topic.slug} style={s.topicRow}><View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View><View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View><Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average response time</Text></View>):<Text style={s.body}>Topic analytics appear after verified answers have been submitted and saved.</Text>}<Text style={[s.small,{marginTop:12}]}>Repeat accuracy is a simple signal from repeated questions, not a formal memory-retention score.</Text></View>
-          <View style={s.card}>
+          <SurfaceCard><Text style={s.cardTitle}>Topic performance</Text>{summary?.topic_performance?.length?summary.topic_performance.map(topic=><View key={topic.slug} style={s.topicRow}><View style={s.topicHeader}><Text style={s.topicName}>{topic.topic}</Text><Text style={s.topicAccuracy}>{topic.accuracy_pct}%</Text></View><View style={s.topicTrack}><View style={[s.topicFill,{width:percentWidth(topic.accuracy_pct)}]}/></View><Text style={s.small}>{topic.attempts} attempts · {topic.average_time_seconds}s average response time</Text></View>):<Text style={s.body}>Topic analytics appear after verified answers have been submitted and saved.</Text>}<Text style={[s.small,{marginTop:12}]}>Repeat accuracy is a simple signal from repeated questions, not a formal memory-retention score.</Text></SurfaceCard>
+          <SurfaceCard>
             <View style={s.serviceHeading}><Text style={s.cardTitle}>Recent answer history</Text><TouchableOpacity accessibilityRole="button" onPress={() => { setScreen("Services"); checkService("history","/v1/attempts/history?exam_id=rrb_ntpc&limit=20&offset=0"); }}><Text style={s.crossLinkText}>Check API →</Text></TouchableOpacity></View>
             {historyLoading ? <ActivityIndicator color={C.teal} style={{marginTop:12}}/> : attemptHistory.length ? attemptHistory.slice(0,10).map((attempt,index)=><View key={attempt.question_id + "-" + index} style={s.historyRow}>
               <View style={s.serviceHeading}><Text style={[s.historyResult,{color:attempt.is_correct?C.teal:C.red}]}>{attempt.is_correct?"CORRECT":"REVIEW"}</Text><Text style={s.small}>{attempt.elapsed_ms==null?"—":(attempt.elapsed_ms/1000).toFixed(1)+"s"}</Text></View>
@@ -966,19 +922,19 @@ export default function App() {
               <Text style={s.body}>{attempt.question_text}</Text>
               <Text style={s.small}>Your answer: {attempt.answer_given || "—"} · Source: {attempt.source_document || "verified source"}{attempt.source_page ? " · page " + attempt.source_page : ""}</Text>
             </View>) : <Text style={s.body}>Your answer history will appear here after the first saved response. If it stays empty, check service readiness and sign-in status.</Text>}
-            <TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Practice again →</Text></TouchableOpacity>
-          </View>
+            <ActionButton label="Practice again →" onPress={() => setScreen("Practice")} variant="secondary" />
+          </SurfaceCard>
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.crossLink}><Text style={s.crossLinkText}>Practice another set →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Revision")} style={s.crossLink}><Text style={s.crossLinkText}>Review weak topics →</Text></TouchableOpacity></View>
         </>}
         {screen === "Revision" && <>
-          <Text style={s.eyebrow}>REVISION WORKSPACE</Text><Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Make weak areas stronger.</Text><Text style={s.sub}>Use recorded performance to choose what to revisit.</Text>
-          <View style={s.card}><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><TouchableOpacity accessibilityRole="button" onPress={startNewTest} style={s.primaryButton}><Text style={s.primaryButtonText}>Start revision practice</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>See topic analytics →</Text></TouchableOpacity></View>
-          <View style={s.card}><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></View><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Go to practice workspace →</Text></TouchableOpacity>
+          <PageHeader eyebrow="REVISION WORKSPACE" title="Make weak areas stronger." description="Use recorded performance to choose what to revisit." compact={compactWidth} />
+          <SurfaceCard><Text style={s.tag}>CURRENT PRIORITY</Text><Text style={s.cardTitle}>{summary?.weakest_topic?summary.weakest_topic.topic:"Build a reliable baseline"}</Text><Text style={s.body}>{summary?.weakest_topic?`Tracked accuracy: ${summary.weakest_topic.accuracy_pct}% across ${summary.weakest_topic.attempts} attempts. Review worked solutions and practise again after a short gap.`:"Answer verified questions first. Once enough attempts are recorded, this page highlights your lowest-accuracy topic."}</Text><ActionButton label="Start revision practice" onPress={startNewTest} variant="primary" /><ActionButton label="See topic analytics →" onPress={() => setScreen("Progress")} variant="secondary" /></SurfaceCard>
+          <SurfaceCard><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></SurfaceCard><ActionButton label="Go to practice workspace →" onPress={() => setScreen("Practice")} variant="secondary" />
         </>}
         {screen === "Services" && <>
-          <Text style={s.eyebrow}>PROFILE & SUPPORT</Text><Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Your space.</Text><Text style={s.sub}>Manage your learning experience and get help when needed.</Text><View style={s.card}><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><TouchableOpacity accessibilityRole="button" onPress={signOut} activeOpacity={0.82} style={s.signOutButton}><Text style={s.signOutText}>Sign out securely</Text></TouchableOpacity></View>
-          <Text style={s.eyebrow}>SERVICE CENTRE</Text><Text style={[s.heading,{fontSize:compactWidth?30:35,lineHeight:compactWidth?36:40,letterSpacing:compactWidth?-0.6:-1}]}>Learning services.</Text><Text style={s.sub}>Check endpoints when something feels stuck.</Text>
-          <View style={s.card}><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></View>
+          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><ActionButton label="Sign out securely" onPress={signOut} variant="danger" /></SurfaceCard>
+          <PageHeader eyebrow="SERVICE CENTRE" title="Learning services." description="Check endpoints when something feels stuck." compact={compactWidth} />
+          <SurfaceCard><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></SurfaceCard>
           {[
             {key:"health",label:"Liveness",path:"/health",description:"Is the API process responding?"},
             {key:"ready",label:"Readiness",path:"/health/ready",description:"Is the database dependency configured?"},
@@ -987,13 +943,13 @@ export default function App() {
             {key:"questions",label:"Verified question bank",path:"/v1/questions?exam_id=rrb_ntpc&limit=1&offset=0",description:"Can the signed-in user retrieve published verified questions?"},
             {key:"summary",label:"Analytics summary",path:"/v1/attempts/summary?exam_id=rrb_ntpc",description:"Can the API retrieve this user's exam-specific analytics?"},
             {key:"history",label:"Attempt history",path:"/v1/attempts/history?exam_id=rrb_ntpc&limit=5&offset=0",description:"Can the API retrieve recent saved answers for this user?"},
-          ].map(item=>{const result=serviceChecks[item.key];return <View key={item.key} style={s.card}><View style={s.serviceHeading}><Text style={s.cardTitle}>{item.label}</Text><Text style={[s.serviceBadge,{color:result?.status==="online"?C.teal:result?.status==="attention"?C.red:C.muted}]}>{result?.status==="online"?"ONLINE":result?.status==="attention"?"CHECK":result?.status==="checking"?"TESTING":"NOT TESTED"}</Text></View><Text style={s.body}>{item.description}</Text><Text style={s.endpoint}>{item.path}</Text>{result&&<Text style={s.small}>{result.detail}</Text>}<TouchableOpacity accessibilityRole="button" onPress={() => checkService(item.key,item.path)} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Test endpoint ↻</Text></TouchableOpacity></View>})}
+          ].map(item=>{const result=serviceChecks[item.key];return <SurfaceCard key={item.key}><View style={s.serviceHeading}><Text style={s.cardTitle}>{item.label}</Text><Text style={[s.serviceBadge,{color:result?.status==="online"?C.teal:result?.status==="attention"?C.red:C.muted}]}>{result?.status==="online"?"ONLINE":result?.status==="attention"?"CHECK":result?.status==="checking"?"TESTING":"NOT TESTED"}</Text></View><Text style={s.body}>{item.description}</Text><Text style={s.endpoint}>{item.path}</Text>{result&&<Text style={s.small}>{result.detail}</Text>}<TouchableOpacity accessibilityRole="button" onPress={() => checkService(item.key,item.path)} style={s.secondaryButton}><Text style={s.secondaryButtonText}>Test endpoint ↻</Text></TouchableOpacity></SurfaceCard>})}
           <View style={s.crossLinks}><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Practice")} style={s.crossLink}><Text style={s.crossLinkText}>Back to practice →</Text></TouchableOpacity><TouchableOpacity accessibilityRole="button" onPress={() => setScreen("Progress")} style={s.crossLink}><Text style={s.crossLinkText}>Open analytics →</Text></TouchableOpacity></View>
         </>}
         <Text style={s.footer}>Small steps. Strong preparation. · Tayar.ai</Text>
-      </ScrollView>
+      </ScreenContainer>
     </Animated.View>
-      <View style={[s.bottomBar,{paddingBottom:Math.max(8,Math.round(8*fontScale)),paddingHorizontal:compactWidth?4:10}]}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={[s.tabButton,{minWidth:48,minHeight:56}]}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
+      <View style={[s.bottomBar,{paddingBottom:Math.max(8,Math.round(8*fontScale)),paddingHorizontal:compactWidth?4:10}]}>{([{key:"Today",label:"Today",glyph:"⌂"},{key:"Learn",label:"Learn",glyph:"▤"},{key:"Practice",label:"Practice",glyph:"◎"},{key:"Progress",label:"Progress",glyph:"▥"}] as {key:AppScreen;label:string;glyph:string}[]).map(item=><TouchableOpacity key={item.key} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{selected:screen===item.key}} onPress={()=>setScreen(item.key)} activeOpacity={0.78} style={[s.tabButton,{minWidth:layout.minimumTouchTarget,minHeight:layout.minimumTabHeight}]}><View style={[s.tabIconWrap,screen===item.key&&s.tabIconActive]}><Text style={[s.tabGlyph,screen===item.key&&s.tabGlyphActive]}>{item.glyph}</Text></View><Text style={[s.tabLabel,screen===item.key&&s.tabLabelActive]}>{item.label}</Text></TouchableOpacity>)}</View>
     </SafeAreaView>
   );
 }
@@ -1034,9 +990,8 @@ const s=StyleSheet.create({
   googleButton:{alignItems:"center",justifyContent:"center",minHeight:48,borderRadius:12,borderWidth:1,borderColor:C.border,backgroundColor:C.panel2,paddingHorizontal:14},googleButtonText:{color:C.text,fontSize:14,fontWeight:"700"},
   brandBlock:{marginBottom:30},brand:{color:C.text,fontSize:24,fontWeight:"900",letterSpacing:1.3},kicker:{color:C.muted,fontSize:9,letterSpacing:1.2,marginTop:4,fontWeight:"700"},
   authHero:{marginBottom:22},eyebrow:{color:C.teal,fontSize:10,fontWeight:"800",letterSpacing:1.7,marginBottom:10},authTitle:{color:C.text,fontSize:31,lineHeight:37,fontWeight:"800",letterSpacing:-.6,marginBottom:12},
-  body:{color:C.muted,fontSize:12,lineHeight:19},card:{padding:18,borderRadius:19,backgroundColor:C.panel,borderWidth:1,borderColor:C.border,marginBottom:20},
+  body:{color:C.muted,fontSize:12,lineHeight:19},
   section:{color:C.text,fontSize:16,fontWeight:"800",marginBottom:14},fieldLabel:{color:C.muted,fontSize:10,fontWeight:"800",letterSpacing:1,marginTop:10,marginBottom:7},
-  input:{color:C.text,backgroundColor:C.bg,borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:13,paddingVertical:13,fontSize:14},
   topicRow:{marginTop:13},topicHeader:{flexDirection:"row",justifyContent:"space-between",alignItems:"center"},topicName:{color:C.text,fontSize:12,fontWeight:"700"},topicAccuracy:{color:C.teal,fontSize:12,fontWeight:"800"},topicTrack:{height:5,borderRadius:8,backgroundColor:"#263650",marginTop:8,marginBottom:6,overflow:"hidden"},topicFill:{height:5,backgroundColor:C.teal,borderRadius:8},progressRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},progressValue:{color:C.text,fontSize:13,fontWeight:"800"},
   timerRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:14,marginBottom:6,padding:12,borderRadius:13,backgroundColor:C.bg,borderWidth:1,borderColor:C.border},timerCaption:{color:C.muted,fontSize:9,fontWeight:"800",letterSpacing:1},timerValue:{color:C.teal,fontSize:23,fontWeight:"900",marginTop:4,fontVariant:["tabular-nums"]},timerReset:{paddingVertical:10,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border},hintButton:{alignSelf:"flex-start",paddingVertical:9,paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:C.border,marginTop:4,marginBottom:6},hintButtonText:{color:C.teal,fontSize:12,fontWeight:"800"},hintPanel:{padding:12,borderRadius:12,backgroundColor:C.panel2,marginTop:8,marginBottom:8,gap:6},
   option:{padding:13,borderRadius:12,borderWidth:1,borderColor:C.border,marginTop:9,backgroundColor:C.bg},optionSelected:{borderColor:C.teal,backgroundColor:"#173C3D"},optionText:{color:C.muted,fontSize:13,lineHeight:19},optionTextSelected:{color:C.text,fontWeight:"700"},feedback:{borderWidth:1,borderRadius:12,padding:13,marginTop:14,gap:6},feedbackTitle:{fontSize:13,fontWeight:"800",marginBottom:4},
