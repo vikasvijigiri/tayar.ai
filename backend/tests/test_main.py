@@ -1159,3 +1159,24 @@ def test_answer_rejects_idempotency_key_reuse_for_different_question(monkeypatch
     )
     assert response.status_code == 409
     assert "different answer" in response.json()["detail"]
+
+
+
+def test_ai_provider_queue_is_bounded_and_fails_fast_when_full(monkeypatch):
+    monkeypatch.setattr(main, "AI_PROVIDER_QUEUE_TIMEOUT_SECONDS", 0.001)
+    semaphore = asyncio.Semaphore(main.AI_PROVIDER_MAX_CONCURRENCY)
+    monkeypatch.setattr(main, "_ai_provider_semaphore", semaphore)
+
+    async def exercise():
+        assert await main._acquire_ai_provider_slot() is True
+        semaphore.release()
+
+        for _ in range(main.AI_PROVIDER_MAX_CONCURRENCY):
+            await semaphore.acquire()
+        try:
+            assert await main._acquire_ai_provider_slot() is False
+        finally:
+            for _ in range(main.AI_PROVIDER_MAX_CONCURRENCY):
+                semaphore.release()
+
+    asyncio.run(exercise())
