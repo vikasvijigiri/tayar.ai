@@ -1,0 +1,129 @@
+name: Mobile E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".maestro/**"
+      - ".github/workflows/mobile-e2e.yml"
+      - ".github/scripts/run-mobile-e2e.sh"
+      - ".devcontainer/**"
+      - "mobile/QA.md"
+      - "README.md"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".maestro/**"
+      - ".github/workflows/mobile-e2e.yml"
+      - ".github/scripts/run-mobile-e2e.sh"
+      - ".devcontainer/**"
+      - "mobile/QA.md"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-emulator:
+    name: Android emulator UI regression
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/platform-tools/adb" version
+
+      - name: Enable KVM hardware acceleration
+        run: |
+          if [[ ! -e /dev/kvm ]]; then
+            echo "::error::This runner does not expose /dev/kvm; refusing a 10-minute TCG emulator boot that cannot reliably run Maestro."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Check Expo dependency compatibility
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Generate Android native project
+        working-directory: mobile
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Build x86_64 release APK with embedded JavaScript bundle
+        working-directory: mobile
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain assembleRelease -PreactNativeArchitectures=x86_64
+
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Run Maestro flows on hosted Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TEST_PHONE: ${{ secrets.TEST_PHONE }}
+          TEST_OTP: ${{ secrets.TEST_OTP }}
+        with:
+          api-level: 35
+          # These smoke flows do not use Play Services; the lean AOSP image avoids GMS startup contention.
+          target: default
+          disable-linux-hw-accel: false
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          disable-spellchecker: false
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -wipe-data -noaudio -no-boot-anim -camera-back none -memory 4096 -cores 2 -partition-size 2048
+          # Keep the action's script input to one command. The checked-in bash file
+          # preserves multiline control flow and makes this test harness independently lintable.
+          script: bash .github/scripts/run-mobile-e2e.sh
+
+      - name: Upload emulator QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayar-android-emulator-qa
+          path: qa-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
