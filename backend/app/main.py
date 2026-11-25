@@ -3,7 +3,7 @@ import hmac
 import json
 import logging
 import os
-from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, deque
 from hashlib import sha256
 from time import monotonic, perf_counter
 from typing import Literal
@@ -62,8 +62,9 @@ HINT_CACHE_TTL_SECONDS = 3600
 HINT_CACHE_MAX_ENTRIES = 512
 HINT_RATE_LIMIT = 10
 HINT_RATE_WINDOW_SECONDS = 60
+HINT_RATE_LIMIT_MAX_USERS = 5000
 _hint_cache: OrderedDict[str, tuple[float, dict[str, str | None]]] = OrderedDict()
-_hint_requests: dict[str, deque[float]] = defaultdict(deque)
+_hint_requests: OrderedDict[str, deque[float]] = OrderedDict()
 HINT_LOCK_MAX_ENTRIES = 512
 AI_PROVIDER_MAX_CONCURRENCY = 8
 AI_PROVIDER_QUEUE_TIMEOUT_SECONDS = 2.0
@@ -85,20 +86,19 @@ async def _acquire_ai_provider_slot() -> bool:
 _hint_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
 
 
-def _get_hint_lock(key: str) -> asyncio.Lock:
+def _get_hint_lock(key: str) -> asyncio.Lock | None:
+    """Return a per-key lock while strictly bounding attacker-influenced registry growth."""
     lock = _hint_locks.get(key)
     if lock is not None:
         _hint_locks.move_to_end(key)
         return lock
+    while len(_hint_locks) >= HINT_LOCK_MAX_ENTRIES:
+        idle_key = next((item_key for item_key, item_lock in _hint_locks.items() if not item_lock.locked()), None)
+        if idle_key is None:
+            return None
+        del _hint_locks[idle_key]
     lock = asyncio.Lock()
     _hint_locks[key] = lock
-    while len(_hint_locks) > HINT_LOCK_MAX_ENTRIES:
-        for old_key, old_lock in list(_hint_locks.items()):
-            if old_key != key and not old_lock.locked():
-                _hint_locks.pop(old_key, None)
-                break
-        else:
-            break
     return lock
 
 
@@ -123,17 +123,20 @@ def _store_cached_hint(key: str, result: dict[str, str | None]) -> None:
 
 def _consume_hint_request(user_id: str) -> int | None:
     now = monotonic()
-    requests = _hint_requests[user_id]
+    requests = _hint_requests.get(user_id)
+    if requests is None:
+        # Keep the per-user rate-limit registry bounded even if account IDs rotate.
+        if len(_hint_requests) >= HINT_RATE_LIMIT_MAX_USERS:
+            _hint_requests.popitem(last=False)
+        requests = deque()
+        _hint_requests[user_id] = requests
+    else:
+        _hint_requests.move_to_end(user_id)
     while requests and now - requests[0] >= HINT_RATE_WINDOW_SECONDS:
         requests.popleft()
     if len(requests) >= HINT_RATE_LIMIT:
         return max(1, int(HINT_RATE_WINDOW_SECONDS - (now - requests[0]) + 0.999))
     requests.append(now)
-    # Bound memory if a large number of accounts visit this single process.
-    if len(_hint_requests) > 5000:
-        for key, timestamps in list(_hint_requests.items()):
-            if not timestamps or now - timestamps[-1] >= HINT_RATE_WINDOW_SECONDS:
-                _hint_requests.pop(key, None)
     return None
 
 
@@ -162,6 +165,14 @@ async def observe_requests(request: Request, call_next):
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
     elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
         response.headers["Cache-Control"] = "private, no-store"
+    else:
+        # Never let shared caches retain health, metrics or other non-public API responses.
+        response.headers["Cache-Control"] = "no-store"
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    if request.url.scheme == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     logger.info(
         "request_id=%s method=%s route=%s status=%s duration_ms=%.2f",
         request_id, request.method, route, response.status_code, duration * 1000,
@@ -541,6 +552,12 @@ async def get_hint(payload: HintIn, request: Request):
     cache_key = f"v1:{payload.question_id}:{payload.hint_level}:{cache_digest}"
     # Per-key async locks prevent concurrent requests from paying for the same inference twice.
     lock = _get_hint_lock(cache_key)
+    if lock is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Hint service is busy. Try again shortly.",
+            headers={"Retry-After": "5"},
+        )
     async with lock:
         cached = _get_cached_hint(cache_key)
         if cached is not None:
