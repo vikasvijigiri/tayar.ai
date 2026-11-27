@@ -18,7 +18,7 @@ This is the engineering source of truth for work required before Tayar.ai can be
 | Database bootstrap | PostgreSQL container in CI validates schema and starter seed; seed assertions run | Production migration rehearsal, backup restore or real RLS isolation across two users |
 | Local capacity smoke | 20 concurrent workers × 50 requests with p95 threshold of 2 seconds against a local API process | Production capacity, database contention, sustained load, spike or soak behavior |
 | Mobile static checks | TypeScript typecheck, source-integrity smoke checks and Android JS bundle export | Runtime interaction correctness or visual quality |
-| Mobile API contracts | Extracted validators and executable boundary tests are being added in PR #28 | Full live API compatibility until integrated and rerun |
+| Mobile API contracts and account deletion | PR #33 adds verified recent-auth deletion, client cleanup, and backend failure-path tests | Live Supabase Auth and real-account deletion remain untested |
 | Android packaging | Release APK build, package identity, signature verification, SHA-256 provenance and 100 MiB size ceiling | Persistent upgrade signing unless the release keystore is configured |
 | Android UI automation | Maestro launch, malformed-phone validation and optional authenticated navigation on a hosted emulator | Complete user journeys, broad device coverage or physical-device behavior |
 | Operations | Health/readiness endpoints, Prometheus metrics, Grafana dashboard/alerts and scheduled public API checks | An actively provisioned production alert receiver and tested incident response |
@@ -173,3 +173,40 @@ A work item is done only when:
 - remaining risks are recorded with an owner and resolution plan.
 
 A production release is blocked by any unresolved critical/high security issue, data-isolation defect, answer-key exposure, source-integrity violation, unrecoverable answer-submission defect, failed release signing/upgrade test or missing rollback path.
+
+
+## 6. Evidence-based audit — 2026-11-27
+
+Scope: feature branch `eng/production-hardening-governance`, PR #33. Changes are not merged or deployed. The current production service is therefore unchanged by this PR.
+
+### Verified in GitHub Actions
+
+- Backend: 83 tests passed; 85.87% statement coverage. CI enforces an 85% minimum.
+- Local concurrency smoke: 1,000 requests with 20 workers; p95 124.2 ms against a 2,000 ms threshold. This is an in-process/CI smoke test, not a production load test.
+- PostgreSQL 17 schema and seed checks passed.
+- CodeQL Python and JavaScript/TypeScript, Gitleaks, npm audit policy and pip-audit passed on the audited PR head.
+- npm audit: zero high/critical findings. Two moderate Expo SDK 54 transitive advisories are temporarily excepted through 2026-12-11; they are not treated as risk-free.
+- CycloneDX SBOMs were generated as workflow artifacts: 37 Python components and 713 mobile components. The mobile SBOM contains node-forge 1.4.4; the vulnerable 1.4.0 was not present.
+- Mobile typecheck, source smoke tests and Android bundle validation passed.
+- Android API 35 Maestro smoke and malformed-phone validation passed.
+- A release APK artifact was built. Its SHA-256 matched the recorded checksum and apksigner verified v2/v3 signatures. The signing key is ephemeral QA signing, not a persistent production key.
+- Android API 29/API 35 responsive checks at 130% font scale are still being exercised; do not count them as passed until their jobs complete successfully.
+
+### Live environment observations
+
+- Render API service: Free plan, one instance, Oregon region.
+- Supabase database: Free plan, Tokyo region.
+- The API and database are in different regions.
+- The live synthetic API monitor and deployed API smoke checks passed during the audit window.
+- The production metrics endpoint currently accepts unauthenticated requests because `METRICS_BEARER_TOKEN` is not configured. PR #33 changes the endpoint to fail closed with HTTP 503 until a token is configured; that change is not live until deployment.
+- Supabase Security Advisor reports leaked-password protection disabled. Supabase documents this control as Pro-only. The Free plan also lacks automatic backups, PITR, branching, an uptime SLA and more than one day of API/database log retention.
+- Main-branch protection is not enabled.
+- The Supabase preview job is skipped because no isolated preview branch is configured.
+- `TEST_PHONE` and `TEST_OTP` are not configured; authenticated learner navigation is skipped.
+- No persistent Android signing keystore/secrets or physical-device test evidence is available.
+- The privacy policy remains a draft without a confirmed support/privacy contact or legal approval.
+- The production question bank has 50 active questions across 12 topics and one exam. Structural checks pass, but independent answer-key review, source authenticity and redistribution rights are not established (Issue #34).
+
+### Release decision
+
+**Not production-certified.** The PR improves code and CI controls, but release remains blocked by owner-controlled infrastructure/secrets, missing live authenticated E2E, persistent signing, physical-device validation, privacy/legal readiness, question provenance, branch protection, and a paid reliability/security plan. Do not merge or deploy on the strength of CI alone.

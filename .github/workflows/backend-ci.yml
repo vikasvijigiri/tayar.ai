@@ -23,12 +23,13 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check app tests
-      - run: PYTHONPATH=. pytest -q --cov=app --cov-report=term-missing
+      - run: PYTHONPATH=. pytest -q --cov=app --cov-report=term-missing --cov-fail-under=85
       - name: Run bounded local API concurrency smoke test
         env:
           LOAD_WORKERS: "20"
           LOAD_REQUESTS_PER_WORKER: "50"
           LOAD_P95_LIMIT_SECONDS: "2.0"
+          METRICS_BEARER_TOKEN: "ci-only-metrics-token"
         run: python scripts/load_smoke.py
       - name: Validate Supabase schema and starter seed in PostgreSQL
         run: |
@@ -41,8 +42,47 @@ jobs:
             if [ "$attempt" -eq 30 ]; then docker logs tayar-seed-test; exit 1; fi
             sleep 2
           done
-          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY); CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';"
+          docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA auth;
+          CREATE TABLE auth.users (id uuid PRIMARY KEY);
+          CREATE ROLE anon;
+          CREATE ROLE authenticated;
+          CREATE ROLE service_role BYPASSRLS;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT nullif(current_setting(''request.jwt.claim.sub'', true), '''')::uuid';
+          GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
+          SQL
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/schema.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_verified_math.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_verified_math.sql
           docker exec -i tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 < supabase/seed_assertions.sql
+
+          echo "Verify two-user row-level isolation, read/write grants, idempotency and deletion cascade"
+          user_a="00000000-0000-4000-8000-000000000101"
+          user_b="00000000-0000-4000-8000-000000000102"
+          idem_key="00000000-0000-4000-8000-000000000201"
+          question_id=$(docker exec tayar-seed-test psql -U postgres -X -A -t -q -v ON_ERROR_STOP=1 -c "SELECT id FROM public.questions ORDER BY id LIMIT 1")
+          test -n "$question_id"
+          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "INSERT INTO auth.users(id) VALUES ('$user_a'), ('$user_b'); INSERT INTO public.attempts(user_id, question_id, is_correct, elapsed_ms, idempotency_key) VALUES ('$user_a', '$question_id', true, 1000, '$idem_key'), ('$user_b', '$question_id', false, 1200, '$idem_key');"
+          visible_a=$(docker exec tayar-seed-test psql -U postgres -X -A -t -q -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SET request.jwt.claim.sub = '$user_a'; SELECT user_id::text FROM public.attempts ORDER BY user_id")
+          visible_b=$(docker exec tayar-seed-test psql -U postgres -X -A -t -q -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SET request.jwt.claim.sub = '$user_b'; SELECT user_id::text FROM public.attempts ORDER BY user_id")
+          test "$visible_a" = "$user_a"
+          test "$visible_b" = "$user_b"
+          if docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "SET ROLE anon; SELECT count(*) FROM public.attempts" >/dev/null 2>&1; then
+            echo "FAIL: anon unexpectedly read practice attempts"; exit 1
+          fi
+          if docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SET request.jwt.claim.sub = '$user_a'; SELECT count(*) FROM public.questions" >/dev/null 2>&1; then
+            echo "FAIL: authenticated role unexpectedly read the protected question bank directly"; exit 1
+          fi
+          if docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SET request.jwt.claim.sub = '$user_a'; INSERT INTO public.attempts(user_id, question_id, is_correct, elapsed_ms, idempotency_key) VALUES ('$user_a', '$question_id', true, 500, '00000000-0000-4000-8000-000000000202')" >/dev/null 2>&1; then
+            echo "FAIL: authenticated role unexpectedly inserted an attempt directly"; exit 1
+          fi
+          if docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "INSERT INTO public.attempts(user_id, question_id, is_correct, elapsed_ms, idempotency_key) VALUES ('$user_a', '$question_id', true, 500, '$idem_key')" >/dev/null 2>&1; then
+            echo "FAIL: duplicate per-user idempotency key was accepted"; exit 1
+          fi
+          docker exec tayar-seed-test psql -U postgres -v ON_ERROR_STOP=1 -c "DELETE FROM auth.users WHERE id = '$user_a'"
+          remaining_a=$(docker exec tayar-seed-test psql -U postgres -X -A -t -q -c "SELECT count(*) FROM public.attempts WHERE user_id = '$user_a'")
+          remaining_b=$(docker exec tayar-seed-test psql -U postgres -X -A -t -q -c "SELECT count(*) FROM public.attempts WHERE user_id = '$user_b'")
+          test "$remaining_a" = "0"
+          test "$remaining_b" = "1"
+          echo "PASS: RLS isolation, restricted client writes, idempotency uniqueness and account-deletion cascade"

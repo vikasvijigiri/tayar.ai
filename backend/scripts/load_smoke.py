@@ -13,11 +13,12 @@ BASE_URL = "http://127.0.0.1:8765"
 WORKERS = max(1, int(os.getenv("LOAD_WORKERS", "10")))
 REQUESTS_PER_WORKER = max(1, int(os.getenv("LOAD_REQUESTS_PER_WORKER", "20")))
 P95_LIMIT_SECONDS = max(0.1, float(os.getenv("LOAD_P95_LIMIT_SECONDS", "2.0")))
+METRICS_TOKEN = os.getenv("METRICS_BEARER_TOKEN", "ci-only-metrics-token")
 ENDPOINTS = [
-    ("/health", 200),
-    ("/v1/config", 200),
-    ("/metrics", 200),
-    ("/v1/attempts/summary", 401),
+    ("/health", 200, None),
+    ("/v1/config", 200, None),
+    ("/metrics", 200, {"Authorization": f"Bearer {METRICS_TOKEN}"}),
+    ("/v1/attempts/summary", 401, None),
 ]
 
 
@@ -36,7 +37,7 @@ async def run_load() -> None:
             "warning",
         ],
         cwd=BACKEND,
-        env={**os.environ, "PYTHONPATH": str(BACKEND)},
+        env={**os.environ, "PYTHONPATH": str(BACKEND), "METRICS_BEARER_TOKEN": METRICS_TOKEN},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -59,10 +60,10 @@ async def run_load() -> None:
 
             async def worker(worker_id: int) -> None:
                 for index in range(REQUESTS_PER_WORKER):
-                    path, expected_status = ENDPOINTS[(worker_id + index) % len(ENDPOINTS)]
+                    path, expected_status, headers = ENDPOINTS[(worker_id + index) % len(ENDPOINTS)]
                     started = time.perf_counter()
                     try:
-                        response = await client.get(f"{BASE_URL}{path}")
+                        response = await client.get(f"{BASE_URL}{path}", headers=headers)
                         elapsed = time.perf_counter() - started
                         latencies.append(elapsed)
                         if response.status_code != expected_status:

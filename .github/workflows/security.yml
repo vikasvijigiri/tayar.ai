@@ -15,7 +15,25 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit
-      - run: pip-audit -r backend/requirements-dev.txt
+      - name: Audit backend dependencies and generate CycloneDX SBOM
+        shell: bash
+        run: |
+          set +e
+          pip-audit -r backend/requirements-dev.txt
+          audit_status=$?
+          pip-audit -r backend/requirements-dev.txt --format cyclonedx-json --output backend-sbom.cdx.json
+          sbom_status=$?
+          if [[ "$audit_status" -ne 0 || "$sbom_status" -ne 0 ]]; then
+            exit 1
+          fi
+      - name: Retain backend SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayar-backend-sbom
+          path: backend-sbom.cdx.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   npm-audit:
     runs-on: ubuntu-latest
@@ -30,8 +48,31 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
-      - name: Audit production JavaScript dependencies
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Generate mobile CycloneDX SBOM
+        run: npm sbom --sbom-format cyclonedx --sbom-type application > mobile-sbom.cdx.json
+      - name: Audit all JavaScript dependencies (including development tooling)
+        id: npm_audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=high --json > npm-audit-report.json
+          audit_status=$?
+          cat npm-audit-report.json
+          python ../.github/scripts/check_npm_audit_exceptions.py --report npm-audit-report.json --exceptions security-exceptions.json --lockfile package-lock.json
+          policy_status=$?
+          if [[ "$audit_status" -ne 0 || "$policy_status" -ne 0 ]]; then
+            exit 1
+          fi
+      - name: Retain npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: |
+            mobile/npm-audit-report.json
+            mobile/mobile-sbom.cdx.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   codeql:
     name: CodeQL static analysis (${{ matrix.language }})
