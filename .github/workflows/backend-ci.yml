@@ -48,12 +48,7 @@ jobs:
           CREATE ROLE anon;
           CREATE ROLE authenticated;
           CREATE ROLE service_role BYPASSRLS;
-          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $
-            SELECT coalesce(
-              nullif(current_setting('request.jwt.claim.sub', true), ''),
-              (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
-            )::uuid;
-          $;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT nullif(current_setting(''request.jwt.claim.sub'', true), '''')::uuid';
           GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
           GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
           SQL
