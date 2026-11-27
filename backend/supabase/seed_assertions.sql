@@ -76,7 +76,7 @@ BEGIN
     WHERE q.exam_id = 'rrb_ntpc'
       AND q.active = true
       AND q.source_verified = true
-    GROUP BY regexp_replace(lower(trim(q.question_text)), '\\s+', ' ', 'g')
+    GROUP BY regexp_replace(lower(trim(q.question_text)), '[[:space:]]+', ' ', 'g')
     HAVING count(*) > 1
   ) THEN
     RAISE EXCEPTION 'Published question bank contains duplicate normalized question text';

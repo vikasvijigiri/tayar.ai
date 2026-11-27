@@ -27,6 +27,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - api: 29
@@ -75,7 +76,18 @@ jobs:
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain assembleRelease -PreactNativeArchitectures=x86_64
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon --console=plain --max-workers=2 assembleRelease -PreactNativeArchitectures=x86_64; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle dependency/build attempt $attempt failed; retrying after $((attempt * 30)) seconds."
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "Gradle build failed after three attempts."
+          exit 1
 
       - name: Boot emulator and verify responsive/accessibility contract
         uses: reactivecircus/android-emulator-runner@v2

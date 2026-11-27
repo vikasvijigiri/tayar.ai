@@ -29,6 +29,7 @@ jobs:
           LOAD_WORKERS: "20"
           LOAD_REQUESTS_PER_WORKER: "50"
           LOAD_P95_LIMIT_SECONDS: "2.0"
+          METRICS_BEARER_TOKEN: "ci-only-metrics-token"
         run: python scripts/load_smoke.py
       - name: Validate Supabase schema and starter seed in PostgreSQL
         run: |
