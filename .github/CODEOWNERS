@@ -1,0 +1,8 @@
+# Route changes to the repository maintainer for review.
+* @vikasvijigiri
+
+# Security-sensitive surfaces require explicit owner review.
+.github/ @vikasvijigiri
+backend/app/ @vikasvijigiri
+backend/supabase/ @vikasvijigiri
+render.yaml @vikasvijigiri

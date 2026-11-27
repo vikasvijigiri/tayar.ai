@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   KeyboardAvoidingView,
   Platform,
@@ -85,6 +86,7 @@ export default function App() {
   const [otpSent, setOtpSent] = useState(false);
   const otpLastSentAt = useRef<{ phone: string; at: number } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [accountDeletionLoading, setAccountDeletionLoading] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -267,7 +269,7 @@ export default function App() {
     finally { setAuthLoading(false); }
   };
 
-    const signOut = async () => {
+  const signOut = async (): Promise<boolean> => {
     sessionEpoch.current += 1;
     refreshInFlight.current = null;
     let access: string | null = null;
@@ -283,6 +285,7 @@ export default function App() {
       SecureStore.deleteItemAsync("tayar_refresh_token"),
       SecureStore.deleteItemAsync("tayar_oauth_verifier"),
     ]);
+    const storageCleanupFailed = cleanup.some((result) => result.status === "rejected");
     // Clear account-scoped state before returning to the sign-in screen.
     setQuestions([]);
     setQuestionIndex(0);
@@ -306,11 +309,66 @@ export default function App() {
     setAnswerLoading(false);
     setHintLoading(false);
     setQuestionLoading(false);
+    setPhone("");
+    setOtp("");
+    setOtpSent(false);
+    otpLastSentAt.current = null;
     setToken(null);
-    setAuthError(cleanup.some((result) => result.status === "rejected"));
-    setAuthMessage(cleanup.some((result) => result.status === "rejected")
+    setAuthError(storageCleanupFailed);
+    setAuthMessage(storageCleanupFailed
       ? "Signed out in this session, but secure storage cleanup failed. Restart the app before switching accounts."
       : "");
+    return !storageCleanupFailed;
+  };
+
+  const performAccountDeletion = async () => {
+    setAccountDeletionLoading(true);
+    try {
+      const currentToken = tokenRef.current;
+      if (!currentToken) throw new Error("Sign in before deleting your account.");
+      // Deliberately bypass authenticatedFetch: refreshing a stale session must not
+      // satisfy the server's recent-authentication requirement for destructive actions.
+      const response = await apiFetch(API_BASE_URL + "/v1/account", {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + currentToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+      }, 15000);
+      const data: unknown = await response.json().catch(() => null);
+      if (response.status === 401 || response.status === 403) {
+        const cleaned = await signOut();
+        setAuthError(true);
+        setAuthMessage(cleaned
+          ? "For security, sign in again and retry account deletion."
+          : "Please sign in again to delete your account. Restart the app first because secure storage cleanup failed.");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(isRecord(data) && typeof data.detail === "string"
+          ? data.detail
+          : "Account deletion could not be completed. Try again later.");
+      }
+      const cleaned = await signOut();
+      setAuthError(!cleaned);
+      setAuthMessage(cleaned
+        ? "Your account and saved practice history were permanently deleted."
+        : "Your account was deleted, but secure storage cleanup failed. Restart the app before continuing.");
+    } catch (error) {
+      setAuthError(true);
+      setAuthMessage(error instanceof Error ? error.message : "Account deletion could not be completed.");
+    } finally {
+      setAccountDeletionLoading(false);
+    }
+  };
+
+  const confirmAccountDeletion = () => {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your Tayar.ai account and saved practice history. This cannot be undone. For security, you may need to sign in again before confirming.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete permanently", style: "destructive", onPress: () => { void performAccountDeletion(); } },
+      ],
+    );
   };
 
   const refreshSession = async (): Promise<{ accessToken: string | null; permanent: boolean }> => {
@@ -932,7 +990,8 @@ export default function App() {
           <SurfaceCard><Text style={s.cardTitle}>Revision routine</Text><Text style={s.body}>1. Re-read solution steps after a mistake.</Text><Text style={s.body}>2. Attempt another verified question without looking.</Text><Text style={s.body}>3. Return after a gap and compare accuracy and time.</Text><Text style={s.small}>This is a study workflow, not a claim that formal retention is already measured.</Text></SurfaceCard><ActionButton label="Go to practice workspace →" onPress={() => setScreen("Practice")} variant="secondary" />
         </>}
         {screen === "Services" && <>
-          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><ActionButton label="Sign out securely" onPress={signOut} variant="danger" /></SurfaceCard>
+          <PageHeader eyebrow="PROFILE & SUPPORT" title="Your space." description="Manage your learning experience and get help when needed." compact={compactWidth} /><SurfaceCard><Text style={s.cardTitle}>Tayar.ai learner account</Text><Text style={s.body}>Your practice history and progress are linked to your secure sign-in. Your answers remain private to your account.</Text><ActionButton label="Sign out securely" onPress={() => { void signOut(); }} variant="danger" /></SurfaceCard>
+          <SurfaceCard><Text style={s.cardTitle}>Delete your account</Text><Text style={s.body}>Permanently delete your Tayar.ai account and all saved practice history. This cannot be undone. A recent sign-in is required to protect your account.</Text><ActionButton label="Delete account and practice history" onPress={confirmAccountDeletion} variant="danger" loading={accountDeletionLoading} /></SurfaceCard>
           <PageHeader eyebrow="SERVICE CENTRE" title="Learning services." description="Check endpoints when something feels stuck." compact={compactWidth} />
           <SurfaceCard><Text style={s.cardTitle}>Backend API</Text><Text style={s.body}>{API_BASE_URL}</Text><TouchableOpacity accessibilityRole="button" disabled={serviceCheckLoading} onPress={checkAllServices} style={s.primaryButton}>{serviceCheckLoading?<ActivityIndicator color={C.bg}/>:<Text style={s.primaryButtonText}>Test all public endpoints</Text>}</TouchableOpacity></SurfaceCard>
           {[

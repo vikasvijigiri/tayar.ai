@@ -1210,3 +1210,403 @@ def test_ai_provider_queue_is_bounded_and_fails_fast_when_full(monkeypatch):
                 semaphore.release()
 
     asyncio.run(exercise())
+
+def test_unhandled_errors_return_sanitized_response_and_request_id(caplog):
+    request_id = "00000000-0000-4000-8000-000000000099"
+
+    def explode():
+        raise RuntimeError("sensitive test payload must not be exposed")
+
+    app.add_api_route("/__test/unhandled", explode, methods=["GET"])
+    route = app.router.routes[-1]
+    try:
+        test_client = TestClient(app, raise_server_exceptions=False)
+        response = test_client.get("/__test/unhandled", headers={"X-Request-ID": request_id})
+    finally:
+        app.router.routes.remove(route)
+
+    assert response.status_code == 500
+    assert response.headers["X-Request-ID"] == request_id
+    assert response.json() == {"detail": "Internal server error."}
+    assert "sensitive test payload" not in response.text
+    assert "sensitive test payload" not in caplog.text
+    assert f"unhandled_request_error request_id={request_id}" in caplog.text
+
+def _account_deletion_token(user_id: str, issued_at: int) -> str:
+    import base64
+    import json
+
+    payload = base64.urlsafe_b64encode(
+        json.dumps({
+            "sub": user_id,
+            "iat": issued_at,
+            "amr": [{"method": "otp", "timestamp": issued_at}],
+        }).encode()
+    ).decode().rstrip("=")
+    return f"header.{payload}.signature"
+
+
+def test_account_deletion_requires_bearer_authentication():
+    response = client.request("DELETE",
+        "/v1/account",
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 401
+
+
+def test_account_deletion_requires_recent_sign_in_and_does_not_call_admin_delete(monkeypatch):
+    user_id = "00000000-0000-4000-8000-000000000123"
+    token = _account_deletion_token(user_id, int(main.time()) - 301)
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"id": user_id}
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, headers=None):
+            assert url.endswith("/auth/v1/user")
+            assert headers["Authorization"] == f"Bearer {token}"
+            return FakeResponse()
+
+        async def delete(self, *args, **kwargs):
+            raise AssertionError("Admin deletion must not run for a stale session")
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.request("DELETE",
+        "/v1/account",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 403
+    assert "Recent sign-in required" in response.json()["detail"]
+
+
+def test_account_deletion_removes_only_verified_user_and_returns_no_store(monkeypatch):
+    user_id = "00000000-0000-4000-8000-000000000123"
+    token = _account_deletion_token(user_id, int(main.time()))
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"id": user_id}
+
+        def raise_for_status(self):
+            return None
+
+    class FakeDeleteResponse:
+        status_code = 204
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            assert kwargs["timeout"] == 12.0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, headers=None):
+            assert url.endswith("/auth/v1/user")
+            assert headers == {
+                "apikey": "public-anon-test-key",
+                "Authorization": f"Bearer {token}",
+            }
+            return FakeResponse()
+
+        async def delete(self, url, headers=None):
+            calls.append((url, headers))
+            return FakeDeleteResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.request("DELETE",
+        "/v1/account",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"deleted": True}
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert len(calls) == 1
+    assert calls[0][0] == f"https://supabase.example/auth/v1/admin/users/{user_id}"
+    assert calls[0][1] == {
+        "apikey": "server-only-test-key",
+        "Authorization": "Bearer server-only-test-key",
+    }
+
+
+def test_account_deletion_requires_exact_confirmation():
+    response = client.request("DELETE",
+        "/v1/account",
+        headers={"Authorization": "Bearer test-token"},
+        json={"confirmation": "yes"},
+    )
+    assert response.status_code == 422
+
+
+def test_account_deletion_cors_allows_delete_preflight():
+    response = client.options(
+        "/v1/account",
+        headers={
+            "Origin": "https://app.tayar.ai",
+            "Access-Control-Request-Method": "DELETE",
+        },
+    )
+    assert response.status_code == 200
+    assert "DELETE" in response.headers["Access-Control-Allow-Methods"]
+
+def test_account_deletion_does_not_treat_refreshed_token_as_recent_authentication():
+    import base64
+    import json
+
+    user_id = "00000000-0000-4000-8000-000000000123"
+    now = int(main.time())
+    payload = base64.urlsafe_b64encode(
+        json.dumps({
+            "sub": user_id,
+            "iat": now,
+            "amr": [{"method": "token_refresh", "timestamp": now}],
+        }).encode()
+    ).decode().rstrip("=")
+    token = f"header.{payload}.signature"
+    assert main._has_recent_authentication(token, user_id, now=now) is False
+
+def test_account_deletion_rejects_anonymous_and_unknown_auth_methods():
+    import base64
+    import json
+
+    user_id = "00000000-0000-4000-8000-000000000123"
+    now = int(main.time())
+    for method in ("anonymous", "unknown_method", "token_refresh"):
+        payload = base64.urlsafe_b64encode(
+            json.dumps({
+                "sub": user_id,
+                "iat": now,
+                "amr": [{"method": method, "timestamp": now}],
+            }).encode()
+        ).decode().rstrip("=")
+        assert main._has_recent_authentication(
+            f"header.{payload}.signature", user_id, now=now
+        ) is False
+
+
+def test_account_deletion_rejects_malformed_or_mismatched_jwt_claims():
+    import base64
+    import json
+
+    user_id = "00000000-0000-4000-8000-000000000123"
+    now = int(main.time())
+    malformed_json = base64.urlsafe_b64encode(b"not-json").decode().rstrip("=")
+    non_object = base64.urlsafe_b64encode(json.dumps(["not", "an", "object"]).encode()).decode().rstrip("=")
+    claims = [
+        {"sub": "00000000-0000-4000-8000-000000000999", "iat": now, "amr": [{"method": "otp", "timestamp": now}]},
+        {"sub": user_id, "iat": now},
+        {"sub": user_id, "iat": "recent", "amr": [{"method": "otp", "timestamp": now}]},
+    ]
+    tokens = ["invalid", f"header.{malformed_json}.signature", f"header.{non_object}.signature"]
+    tokens.extend(
+        "header." + base64.urlsafe_b64encode(json.dumps(item).encode()).decode().rstrip("=") + ".signature"
+        for item in claims
+    )
+    assert all(
+        main._has_recent_authentication(token, user_id, now=now) is False
+        for token in tokens
+    )
+
+def test_account_deletion_requires_server_configuration(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    response = client.request(
+        "DELETE",
+        "/v1/account",
+        headers={"Authorization": "Bearer test-token"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
+
+
+def test_account_deletion_rejects_invalid_supabase_session(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 401
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.request(
+        "DELETE",
+        "/v1/account",
+        headers={"Authorization": "Bearer invalid-token"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 401
+
+
+def test_account_deletion_rejects_invalid_auth_user_id(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"id": "not-a-uuid"}
+
+        def raise_for_status(self):
+            return None
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    token = "test-token"
+    response = client.request(
+        "DELETE",
+        "/v1/account",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 502
+
+
+def test_account_deletion_sanitizes_admin_provider_errors(monkeypatch):
+    user_id = "00000000-0000-4000-8000-000000000123"
+    token = _account_deletion_token(user_id, int(main.time()))
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class UserResponse:
+        status_code = 200
+
+        def json(self):
+            return {"id": user_id}
+
+        def raise_for_status(self):
+            return None
+
+    for admin_status, expected_status in ((403, 503), (404, 404), (500, 503), (400, 502)):
+        class DeleteResponse:
+            status_code = admin_status
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, *args, **kwargs):
+                return UserResponse()
+
+            async def delete(self, *args, **kwargs):
+                return DeleteResponse()
+
+        monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+        response = client.request(
+            "DELETE",
+            "/v1/account",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"confirmation": "DELETE MY ACCOUNT"},
+        )
+        assert response.status_code == expected_status
+        assert "server-only-test-key" not in response.text
+
+
+def test_account_deletion_handles_supabase_network_failure(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-anon-test-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-only-test-key")
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            raise main.httpx.ConnectError("private upstream diagnostic")
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.request(
+        "DELETE",
+        "/v1/account",
+        headers={"Authorization": "Bearer invalid-token"},
+        json={"confirmation": "DELETE MY ACCOUNT"},
+    )
+    assert response.status_code == 503
+    assert "private upstream diagnostic" not in response.text
+
+def test_account_deletion_accepts_recent_supported_auth_methods():
+    import base64
+    import json
+
+    user_id = "00000000-0000-4000-8000-000000000123"
+    now = int(main.time())
+    for method in ("otp", "oauth", "oauth_provider/authorization_code", "password"):
+        payload = base64.urlsafe_b64encode(
+            json.dumps({
+                "sub": user_id,
+                "iat": now,
+                "amr": [{"method": method, "timestamp": now}],
+            }).encode()
+        ).decode().rstrip("=")
+        assert main._has_recent_authentication(
+            f"header.{payload}.signature", user_id, now=now
+        ) is True

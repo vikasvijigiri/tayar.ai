@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "advisory": "GHSA-3g3m-2fjr-6pw4",
+      "package": "glob",
+      "severity": "moderate",
+      "affected_range": ">=9.0.0 <=14.0.1",
+      "locked_version": "13.0.6",
+      "fixed_version": "14.0.2",
+      "review_by": "2026-12-11",
+      "reason": "The Expo SDK 54 toolchain locks @expo/cli 54.0.28 to glob ^13.0.0. The first patched glob release is 14.0.2, outside that declared major range. npm audit proposes an Expo SDK 58.1.0 major migration; forcing glob 14 into SDK 54 would bypass Expo's compatibility contract.",
+      "mitigation": "The affected glob copy is in the Expo CLI/build toolchain; the mobile application source does not import glob or expose glob patterns to learners. This remains a build-environment risk, not a zero-risk finding. Keep the exact lockfile, avoid processing untrusted project configuration, and remove this exception only after a tested Expo SDK migration or an in-range upstream patch.",
+      "tracking_issue": "https://github.com/vikasvijigiri/tayar.ai/issues/10"
+    },
+    {
+      "advisory": "GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "severity": "moderate",
+      "affected_range": ">=7.0.0 <11.0.1",
+      "locked_version": "9.0.9 and 10.2.6",
+      "fixed_version": "11.0.1",
+      "review_by": "2026-12-11",
+      "reason": "Expo SDK 54's @expo/cli declares minimatch ^9.0.0 and glob 13.0.6 declares minimatch ^10.2.2. The first patched release is 11.0.1, outside both declared major ranges. npm audit proposes an Expo SDK 58.1.0 major migration; forcing minimatch 11 into SDK 54 would bypass upstream compatibility constraints.",
+      "mitigation": "The affected copies are transitive Expo CLI/build-tool dependencies; the mobile application source does not import minimatch or accept learner-controlled glob patterns. This remains a build-environment risk, not a zero-risk finding. Keep the exact lockfile, avoid processing untrusted project configuration, and remove this exception only after a tested Expo SDK migration or an in-range upstream patch.",
+      "tracking_issue": "https://github.com/vikasvijigiri/tayar.ai/issues/10"
+    }
+  ]
+}

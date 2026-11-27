@@ -108,17 +108,27 @@ const pageHeader = fs.readFileSync('src/components/PageHeader.tsx', 'utf8');
 if (!pageHeader.includes('accessibilityRole="header"') || !pageHeader.includes('titleCompact') || !pageHeader.includes("leadingContent?: ReactNode") || !pageHeader.includes("{leadingContent}")) throw new Error("Page headers must expose heading semantics, compact-phone typography and optional leading content");
 console.log("Shared UI checks passed: seven screen headers use accessible responsive typography");
 
-if ((app.match(/<SurfaceCard\b/g) || []).length !== 11 || (app.match(/<\/SurfaceCard>/g) || []).length !== 11) throw new Error("All eleven shared content cards must use SurfaceCard with balanced wrappers");
+if ((app.match(/<SurfaceCard\b/g) || []).length !== 12 || (app.match(/<\/SurfaceCard>/g) || []).length !== 12) throw new Error("All twelve shared content cards must use SurfaceCard with balanced wrappers");
 if (!app.includes('from "./src/components/SurfaceCard"')) throw new Error("App must consume the shared SurfaceCard component");
 const surfaceCard = fs.readFileSync('src/components/SurfaceCard.tsx', 'utf8');
 if (!surfaceCard.includes('colors.surface') || !surfaceCard.includes('radii.lg') || !surfaceCard.includes('spacing.lg')) throw new Error("SurfaceCard must use shared design tokens");
-console.log("Shared surface checks passed: eleven content cards use the tokenized SurfaceCard");
+console.log("Shared surface checks passed: twelve content cards use the tokenized SurfaceCard");
 
-if ((app.match(/<ActionButton\b/g) || []).length !== 8) throw new Error("Static learner actions must use the shared ActionButton");
+const deletionStart = app.indexOf("const performAccountDeletion");
+const deletionEnd = app.indexOf("const confirmAccountDeletion", deletionStart);
+const deletionFlow = app.slice(deletionStart, deletionEnd);
+if (deletionStart < 0 || deletionEnd < 0 || !app.includes("Delete account and practice history")
+  || !app.includes("Alert.alert") || !deletionFlow.includes('apiFetch(API_BASE_URL + "/v1/account"')
+  || deletionFlow.includes("authenticatedFetch(")) {
+  throw new Error("Account deletion must require explicit confirmation and bypass automatic token refresh");
+}
+console.log("Account deletion checks passed: explicit destructive confirmation and fresh-session-only request");
+
+if ((app.match(/<ActionButton\b/g) || []).length !== 9) throw new Error("All nine static learner actions must use the shared ActionButton");
 if (!app.includes('from "./src/components/ActionButton"')) throw new Error("App must consume the shared ActionButton");
 const actionButton = fs.readFileSync('src/components/ActionButton.tsx', 'utf8');
 if (!actionButton.includes('accessibilityRole="button"') || !actionButton.includes('accessibilityLabel={accessibilityLabel || label}') || !actionButton.includes('accessibilityState')) throw new Error("ActionButton must expose accessible name and state");
-console.log("Shared action checks passed: eight learner actions use accessible button variants");
+console.log("Shared action checks passed: nine learner actions use accessible button variants");
 
 if (!app.includes('from "./src/components/FormField"')) throw new Error("Auth forms must use the shared FormField component");
 if ((app.match(/<FormField\b/g) || []).length !== 2) throw new Error("Phone and OTP forms must use the shared FormField component");

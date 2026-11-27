@@ -1,11 +1,13 @@
 import asyncio
+import base64
 import hmac
 import json
 import logging
 import os
+import traceback
 from collections import OrderedDict, deque
 from hashlib import sha256
-from time import monotonic, perf_counter
+from time import monotonic, perf_counter, time
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -14,7 +16,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 app = FastAPI(
     title="Tayar.ai Adaptive API",
@@ -26,7 +28,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID"],
 )
 
@@ -149,12 +151,35 @@ async def observe_requests(request: Request, call_next):
         request_id = str(uuid4())
     request.state.request_id = request_id
 
-    response = await call_next(request)
+    exception_recorded = False
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        # Keep unexpected failures traceable without echoing exception text or request data
+        # into the response or logs. Traceback frames retain source locations, not locals.
+        duration = perf_counter() - started
+        route_obj = request.scope.get("route")
+        route = getattr(route_obj, "path", "unmatched")
+        if route != "/metrics":
+            REQUEST_COUNT.labels(request.method, route, "500").inc()
+            REQUEST_LATENCY.labels(request.method, route).observe(duration)
+        exception_recorded = True
+        stack = "".join(traceback.format_tb(exc.__traceback__, limit=20))
+        logger.error(
+            "unhandled_request_error request_id=%s method=%s route=%s status=500 "
+            "duration_ms=%.2f exception_type=%s traceback=%s",
+            request_id, request.method, route, duration * 1000, type(exc).__name__, stack,
+        )
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error."},
+        )
+
     duration = perf_counter() - started
     route_obj = request.scope.get("route")
     route = getattr(route_obj, "path", "unmatched")
 
-    if route != "/metrics":
+    if route != "/metrics" and not exception_recorded:
         REQUEST_COUNT.labels(request.method, route, str(response.status_code)).inc()
         REQUEST_LATENCY.labels(request.method, route).observe(duration)
 
@@ -163,7 +188,7 @@ async def observe_requests(request: Request, call_next):
     # must never be stored by shared proxies or intermediary caches.
     if route == "/v1/config":
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
-    elif route.startswith(("/v1/auth/", "/v1/questions", "/v1/attempts", "/v1/ai/")):
+    elif route.startswith(("/v1/auth/", "/v1/account", "/v1/questions", "/v1/attempts", "/v1/ai/")):
         response.headers["Cache-Control"] = "private, no-store"
     else:
         # Never let shared caches retain health, metrics or other non-public API responses.
@@ -202,6 +227,44 @@ def _upstream_object(response, detail: str) -> dict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail=detail)
     return payload
+
+
+def _has_recent_authentication(token: str, user_id: str, now: int | None = None) -> bool:
+    """Require recent original OTP, OAuth, or password authentication for deletion.
+
+    The caller must first validate the bearer token with Supabase Auth. This helper
+    checks the verified token's subject, issued-at timestamp, and AMR method/time.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    try:
+        encoded_payload = parts[1]
+        payload = base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4))
+        claims = json.loads(payload)
+        if not isinstance(claims, dict):
+            return False
+        subject = str(UUID(str(claims.get("sub"))))
+        expected_subject = str(UUID(user_id))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    issued_at = claims.get("iat")
+    authentication_methods = claims.get("amr")
+    if type(issued_at) is not int or not isinstance(authentication_methods, list):
+        return False
+    current_time = int(time()) if now is None else now
+    if subject != expected_subject or not (current_time - 300 <= issued_at <= current_time + 30):
+        return False
+    # Supabase refreshes issue a new iat. Require a recent original auth method
+    # (OTP/OAuth/etc.), not a token_refresh AMR entry, to prevent refresh bypass.
+    allowed_methods = {"otp", "oauth", "oauth_provider/authorization_code", "password"}
+    return any(
+        isinstance(method, dict)
+        and method.get("method") in allowed_methods
+        and type(method.get("timestamp")) is int
+        and current_time - 300 <= method["timestamp"] <= current_time + 30
+        for method in authentication_methods
+    )
 
 
 def _upstream_list(response, detail: str) -> list[dict]:
@@ -658,6 +721,70 @@ async def auth_refresh(payload: RefreshCredentials):
         raise HTTPException(status_code=503, detail="Authentication provider is temporarily unreachable.")
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Authentication provider returned an invalid response.") from exc
+
+
+class AccountDeletionConfirmation(BaseModel):
+    confirmation: Literal["DELETE MY ACCOUNT"]
+
+
+@app.delete("/v1/account")
+async def delete_account(payload: AccountDeletionConfirmation, request: Request):
+    """Permanently delete the authenticated account and its cascading attempt history."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Bearer access token required.")
+
+    base_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not base_url or not anon_key or not service_key:
+        raise HTTPException(status_code=503, detail="Account deletion is not configured.")
+
+    user_headers = {"apikey": anon_key, "Authorization": f"Bearer {token.strip()}"}
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            user_response = await client.get(f"{base_url}/auth/v1/user", headers=user_headers)
+            if user_response.status_code in (401, 403):
+                raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+            user_response.raise_for_status()
+            user_id = _upstream_object(
+                user_response, "Authentication provider returned invalid user data."
+            ).get("id")
+            try:
+                user_id = str(UUID(str(user_id)))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise HTTPException(status_code=502, detail="Authentication provider returned an invalid user ID.") from exc
+
+            # A refresh token alone must not satisfy this step-up requirement. The
+            # mobile client calls this endpoint without its automatic refresh wrapper.
+            if not _has_recent_authentication(token.strip(), user_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Recent sign-in required. Sign in again before deleting your account.",
+                )
+
+            delete_response = await client.delete(
+                f"{base_url}/auth/v1/admin/users/{user_id}",
+                headers=admin_headers,
+            )
+            if delete_response.status_code in (401, 403):
+                raise HTTPException(status_code=503, detail="Account deletion service is not configured correctly.")
+            if delete_response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Account was not found.")
+            if delete_response.status_code >= 500:
+                raise HTTPException(status_code=503, detail="Account deletion is temporarily unavailable.")
+            if delete_response.status_code >= 300:
+                raise HTTPException(status_code=502, detail="Account deletion could not be completed.")
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail="Account deletion provider request failed.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Account deletion provider is temporarily unreachable.") from exc
+
+    return {"deleted": True}
 
 
 class QuestionAnswerIn(BaseModel):
