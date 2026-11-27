@@ -58,7 +58,7 @@ jobs:
           npm audit --audit-level=high --json > npm-audit-report.json
           audit_status=$?
           cat npm-audit-report.json
-          python ../.github/scripts/check_npm_audit_exceptions.py --report npm-audit-report.json --exceptions security-exceptions.json
+          python ../.github/scripts/check_npm_audit_exceptions.py --report npm-audit-report.json --exceptions security-exceptions.json --lockfile package-lock.json
           policy_status=$?
           if [[ "$audit_status" -ne 0 || "$policy_status" -ne 0 ]]; then
             exit 1

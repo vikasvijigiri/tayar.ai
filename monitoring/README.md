@@ -14,8 +14,16 @@ The repository includes a self-hosted Prometheus + Blackbox Exporter + Grafana s
 
 - `GET /health` — liveness.
 - `GET /health/ready` — checks required Supabase configuration and connectivity without returning secrets.
-- `GET /metrics` — Prometheus text exposition for request counters and latency histograms.
+- `GET /metrics` — Prometheus text exposition for request counters and latency histograms. It fails closed with HTTP 503 until `METRICS_BEARER_TOKEN` is configured, and requires the matching bearer token thereafter.
 - The dashboard shows request rate, 5xx error ratio, p95 latency, requests by endpoint/status, and API liveness/readiness.
+
+## Configure metrics authentication
+
+Generate a unique high-entropy token and set the same value as:
+- Render service environment variable `METRICS_BEARER_TOKEN`
+- GitHub Actions repository secret `METRICS_BEARER_TOKEN`
+
+Do not paste the token into source files, issues, logs, or this README. Until both values are configured, the production metrics endpoint intentionally returns HTTP 503 and the scheduled synthetic monitor records a warning instead of scraping it.
 
 ## Start locally
 

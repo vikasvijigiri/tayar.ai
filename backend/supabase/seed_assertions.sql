@@ -8,6 +8,14 @@ BEGIN
      OR has_table_privilege('anon', 'public.attempts', 'INSERT') THEN
     RAISE EXCEPTION 'Client roles must not be able to insert practice attempts directly';
   END IF;
+  IF has_table_privilege('authenticated', 'public.questions', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.topics', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.exams', 'SELECT')
+     OR has_table_privilege('anon', 'public.questions', 'SELECT')
+     OR has_table_privilege('anon', 'public.topics', 'SELECT')
+     OR has_table_privilege('anon', 'public.exams', 'SELECT') THEN
+    RAISE EXCEPTION 'Client roles must not read the protected question bank directly';
+  END IF;
   IF NOT has_table_privilege('service_role', 'public.attempts', 'INSERT') THEN
     RAISE EXCEPTION 'Backend service role must be able to save graded attempts';
   END IF;
@@ -52,11 +60,26 @@ BEGIN
     WHERE exam_id = 'rrb_ntpc'
       AND active = true
       AND source_verified = true
-      AND (jsonb_array_length(options) <> 4 OR answer_key NOT IN ('A', 'B', 'C', 'D')
+      AND (jsonb_array_length(options) <> 4
+        OR (SELECT count(DISTINCT lower(trim(opt.value))) FROM jsonb_array_elements_text(options) AS opt(value)) <> 4
+        OR answer_key NOT IN ('A', 'B', 'C', 'D')
         OR source_document IS NULL OR source_page IS NULL
-        OR jsonb_array_length(solution_steps) = 0)
+        OR jsonb_array_length(solution_steps) = 0
+        OR difficulty IS NULL OR syllabus_weight IS NULL)
   ) THEN
     RAISE EXCEPTION 'A published question is missing options, answer key, source metadata, or solution steps';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.questions q
+    WHERE q.exam_id = 'rrb_ntpc'
+      AND q.active = true
+      AND q.source_verified = true
+    GROUP BY regexp_replace(lower(trim(q.question_text)), '\\s+', ' ', 'g')
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Published question bank contains duplicate normalized question text';
   END IF;
 
   IF EXISTS (

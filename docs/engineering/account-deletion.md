@@ -56,3 +56,15 @@ Mocked CI tests do not prove production Supabase behavior. Before public release
 8. retain redacted request IDs, test results, and database assertions as evidence.
 
 Never run destructive lifecycle tests against production user data.
+
+
+## Additional automated verification
+
+The backend CI now exercises the database boundary in an isolated PostgreSQL 17 container:
+- Two synthetic users can read only their own attempt rows under the `authenticated` role.
+- `anon` cannot read attempts.
+- Authenticated clients cannot read the protected question bank or insert attempts directly.
+- The per-user idempotency key uniqueness constraint rejects duplicate submissions.
+- Deleting one synthetic Auth user cascades only that user's attempt history and leaves the other user's row intact.
+
+This is a local PostgreSQL/RLS simulation, not a live Supabase Auth integration test. A dedicated non-production Supabase project/branch and live authenticated end-to-end test remain required before release. Never test account deletion against a real user account.

@@ -54,9 +54,10 @@ def test_cors_rejects_untrusted_browser_origins():
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_metrics_endpoint_is_prometheus_compatible():
+def test_metrics_endpoint_is_prometheus_compatible(monkeypatch):
+    monkeypatch.setenv("METRICS_BEARER_TOKEN", "test-metrics-token")
     client.get("/health")
-    r = client.get("/metrics")
+    r = client.get("/metrics", headers={"Authorization": "Bearer test-metrics-token"})
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
     assert "tayar_http_requests_total" in r.text
@@ -690,6 +691,7 @@ def test_answer_returns_404_for_unpublished_or_unverified_question(monkeypatch):
 
 def test_ai_provider_success_is_instrumented(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test-only-key")
+    monkeypatch.setenv("METRICS_BEARER_TOKEN", "test-metrics-token")
 
     class FakeResponse:
         def raise_for_status(self):
@@ -716,7 +718,7 @@ def test_ai_provider_success_is_instrumented(monkeypatch):
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     result = asyncio.run(main.provider_completion("groq", "system", "user"))
     assert result == "A concise verified hint."
-    metrics = client.get("/metrics").text
+    metrics = client.get("/metrics", headers={"Authorization": "Bearer test-metrics-token"}).text
     assert "tayar_ai_provider_requests_total" in metrics
     assert 'provider="groq"' in metrics
     assert 'outcome="success"' in metrics
@@ -1610,3 +1612,17 @@ def test_account_deletion_accepts_recent_supported_auth_methods():
         assert main._has_recent_authentication(
             f"header.{payload}.signature", user_id, now=now
         ) is True
+
+def test_metrics_endpoint_fails_closed_without_a_configured_token(monkeypatch):
+    monkeypatch.delenv("METRICS_BEARER_TOKEN", raising=False)
+    response = client.get("/metrics")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Metrics authentication is not configured."
+
+
+def test_metrics_endpoint_rejects_missing_or_invalid_bearer_tokens(monkeypatch):
+    monkeypatch.setenv("METRICS_BEARER_TOKEN", "test-metrics-token")
+    assert client.get("/metrics").status_code == 401
+    assert client.get(
+        "/metrics", headers={"Authorization": "Bearer wrong-token"}
+    ).status_code == 401

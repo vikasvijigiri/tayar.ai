@@ -108,11 +108,17 @@ def main() -> int:
     print(f"PASS question integrity and answer-key non-disclosure ({len(rows)} rows; bank total {questions['total_count']})")
 
     metrics_token = os.getenv("METRICS_BEARER_TOKEN", "").strip()
-    metrics_headers = {"Authorization": f"Bearer {metrics_token}"} if metrics_token else None
-    metrics, metrics_type = check("GET", "/metrics", 200, extra_headers=metrics_headers)
-    expect("text/plain" in metrics_type, "/metrics did not return Prometheus text exposition")
-    expect(isinstance(metrics, str) and ("# HELP" in metrics or "# TYPE" in metrics),
-           "/metrics did not return Prometheus metrics")
+    if metrics_token:
+        metrics, metrics_type = check(
+            "GET", "/metrics", 200,
+            extra_headers={"Authorization": f"Bearer {metrics_token}"},
+        )
+        expect("text/plain" in metrics_type, "/metrics did not return Prometheus text exposition")
+        expect(isinstance(metrics, str) and ("# HELP" in metrics or "# TYPE" in metrics),
+               "/metrics did not return Prometheus metrics")
+    else:
+        check("GET", "/metrics", 503)
+        print("WARN METRICS_BEARER_TOKEN is not configured; metrics are intentionally disabled.")
 
     # Developer-only attempt preview must remain disabled in production.
     check("POST", "/v1/attempts/preview", 404, {

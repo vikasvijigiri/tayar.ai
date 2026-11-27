@@ -342,10 +342,11 @@ def health():
 
 @app.get("/metrics", include_in_schema=False)
 def metrics(authorization: str | None = Header(default=None)):
-    # Set METRICS_BEARER_TOKEN in Render before connecting an external scraper.
-    # When unset, preserve the existing public endpoint for initial deployment.
+    # Metrics expose operational topology and traffic; fail closed until configured.
     expected_token = os.getenv("METRICS_BEARER_TOKEN", "").strip()
-    if expected_token and not hmac.compare_digest(authorization or "", f"Bearer {expected_token}"):
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Metrics authentication is not configured.")
+    if not hmac.compare_digest(authorization or "", f"Bearer {expected_token}"):
         raise HTTPException(status_code=401, detail="Metrics bearer token required.")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

@@ -88,3 +88,15 @@ Before this notice is published, complete:
 7. Complete live account-deletion and data-isolation tests in a dedicated non-production environment.
 
 Until these items are completed, this draft must not be represented as a published privacy policy.
+
+
+## Internal release verification notes — remove before publication
+
+These notes are operational findings, not consumer-facing policy language. They must be rechecked immediately before publication.
+
+- The observed Supabase project is on the Free plan in the Tokyo region. The observed Render API service is on the Free plan in Oregon with one instance. API traffic therefore crosses regions; the final data-flow and latency disclosure must match the deployment actually chosen at launch.
+- The current Supabase Free plan does not provide automatic database backups, point-in-time recovery, branching, an uptime SLA, or more than one day of API/database log retention. Leaked-password protection is Pro-only. The production Auth project currently has this protection disabled.
+- The backend can be configured for Groq, Google Gemini, or Cerebras. The exact provider and model active at launch must be confirmed from deployment configuration and disclosed accurately.
+- Attempt history is retained in the account database until account deletion or a separately approved retention policy. No fixed automatic deletion period has been verified.
+- A real support/privacy contact is not yet supplied. Replace every placeholder with an owner-controlled contact and obtain legal review before publishing.
+- The policy is a draft. It is not evidence that a privacy notice, terms, consent flow, or user-rights process is live in the app.
